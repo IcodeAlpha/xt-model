@@ -84,6 +84,7 @@ def process_match(events, match_id):
             "possession": possession,
             "team": e.get("team", {}).get("name"),
             "player": e.get("player", {}).get("name"),
+            "position": e.get("position", {}).get("name"),
             "type": etype,
             "start_x": loc[0],
             "start_y": loc[1],
