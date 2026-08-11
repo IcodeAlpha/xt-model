@@ -111,8 +111,15 @@ def plot_surfaces():
     return p_lgbm, p_deep
 
 
-def plot_match_pass_values(match_id, team_name=None):
-    """Overlay a real match's passes colored by learned threat added (xT delta)."""
+def plot_match_pass_values(match_id, team_name=None, exclude_positions=("Goalkeeper",)):
+    """Overlay a real match's passes colored by learned threat added (xT delta).
+
+    Goalkeeper actions are excluded from the leaderboard by default: keeper
+    goal kicks and clearances often travel far downfield and get scored as
+    "high value" purely by end location, which isn't a meaningful read of
+    buildup play (a position-only xT model can't tell a controlled progressive
+    pass from a hopeful long ball that happened to land forward).
+    """
     df = pd.read_parquet(os.path.join(PROCESSED_DIR, "actions.parquet"))
     df = df[(df["match_id"] == match_id) & (df["type"] == "Pass") & (df["completed"] == True)]
     if team_name:
@@ -166,9 +173,15 @@ def plot_match_pass_values(match_id, team_name=None):
     fig.savefig(out_path, dpi=150, facecolor="white")
     print(f"Saved {out_path}")
     plt.close(fig)
-    return df.sort_values("xt_added", ascending=False)[
-        ["minute", "player", "team", "start_x", "start_y", "end_x", "end_y", "xt_added"]
+
+    leaderboard = df.sort_values("xt_added", ascending=False)[
+        ["minute", "player", "team", "position", "start_x", "start_y", "end_x", "end_y", "xt_added"]
     ]
+    if exclude_positions:
+        outfield = leaderboard[~leaderboard["position"].isin(exclude_positions)]
+    else:
+        outfield = leaderboard
+    return leaderboard, outfield
 
 
 if __name__ == "__main__":
@@ -176,5 +189,8 @@ if __name__ == "__main__":
 
     # Argentina vs France, World Cup 2022 Final -- 3-3, decided on penalties
     FINAL_MATCH_ID = 3869685
-    top_passes = plot_match_pass_values(match_id=FINAL_MATCH_ID)
-    print(top_passes.head(10).to_string(index=False))
+    all_passes, outfield_passes = plot_match_pass_values(match_id=FINAL_MATCH_ID)
+    print("\nTop 10 (all positions, including goalkeepers):")
+    print(all_passes.head(10).to_string(index=False))
+    print("\nTop 10 (outfield players only):")
+    print(outfield_passes.head(10).to_string(index=False))
