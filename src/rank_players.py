@@ -53,8 +53,9 @@ def build_rankings():
     # Per-player, per-match aggregation first (so "each single one, from each match"
     # is genuinely available), then rolled up to a tournament total.
     per_match = (
-        actions.groupby(["match_id", "player", "team", "position"], dropna=False)
-        .agg(xt_added=("xt_added", "sum"), actions=("xt_added", "count"))
+        actions.groupby(["match_id", "player", "team"], dropna=False)
+        .agg(xt_added=("xt_added", "sum"), actions=("xt_added", "count"),
+             positions_played=("position", lambda s: ", ".join(sorted(set(s.dropna())))))
         .reset_index()
     )
 
