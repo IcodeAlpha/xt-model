@@ -10,17 +10,27 @@ Then open:
     http://127.0.0.1:8000/redoc     <- alternative docs UI
 """
 import os
+import io
 import numpy as np
+import pandas as pd
 import joblib
-import torch
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from features import angle_to_goal
+from features import angle_to_goal, add_features
 from train_baseline import END_STATE_FEATURES
-from train_deep import XTNet, DEVICE
+
+try:
+    import torch
+    from train_deep import XTNet, DEVICE
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+    DEVICE = None
 
 MODELS_DIR = os.path.join(os.path.dirname(__file__), "..", "models")
+PROCESSED_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "processed")
 
 app = FastAPI(
     title="Expected Threat (xT) API",
@@ -30,6 +40,16 @@ app = FastAPI(
         "open data. See README for methodology and cross-validated results."
     ),
     version="1.0.0",
+)
+
+# Allow the standalone HTML dashboard (opened via file:// or any local server)
+# to call this API directly from the browser. Fine for local/dev use --
+# tighten allow_origins before deploying this anywhere public.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # ---------------------------------------------------------------------------
@@ -49,7 +69,7 @@ def load_models():
         _lgbm_model = joblib.load(lgbm_path)
 
     deep_path = os.path.join(MODELS_DIR, "xtnet.pt")
-    if os.path.exists(deep_path):
+    if TORCH_AVAILABLE and os.path.exists(deep_path):
         ckpt = torch.load(deep_path, map_location=DEVICE, weights_only=False)
         model = XTNet(n_features=len(ckpt["features"])).to(DEVICE)
         model.load_state_dict(ckpt["state_dict"])
@@ -147,4 +167,145 @@ def health():
         "status": "ok",
         "lgbm_loaded": _lgbm_model is not None,
         "deep_loaded": _deep_model is not None,
+        "torch_available": TORCH_AVAILABLE,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Full tournament player rankings -- backs the leaderboard UI's "load all
+# players" button, instead of the UI having to embed a hardcoded snapshot.
+# ---------------------------------------------------------------------------
+@app.get("/players/tournament", tags=["players"])
+def players_tournament():
+    """Every player ranked from the precomputed World Cup 2022 dataset
+    (built by rank_players.py). Returns the same numbers as
+    data/processed/player_xt_tournament.csv, as JSON."""
+    path = os.path.join(PROCESSED_DIR, "player_xt_tournament.csv")
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404,
+                             detail="player_xt_tournament.csv not found -- run rank_players.py first.")
+    df = pd.read_csv(path)
+    df = df.sort_values("total_xt_added", ascending=False)
+    return df.to_dict(orient="records")
+
+
+@app.get("/players/progressive", tags=["players"])
+def players_progressive():
+    """Progressive actions per player -- a rule-based metric independent of
+    the xT model (see rank_progressive.py for the definition)."""
+    path = os.path.join(PROCESSED_DIR, "player_progressive.csv")
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404,
+                             detail="player_progressive.csv not found -- run rank_progressive.py first.")
+    df = pd.read_csv(path)
+    df = df.sort_values("progressive_actions", ascending=False)
+    return df.to_dict(orient="records")
+
+
+@app.get("/players/xa", tags=["players"])
+def players_xa():
+    """Expected Assists per player -- sum of predicted xG for every shot
+    a player's pass directly led to (see build_xa.py)."""
+    path = os.path.join(PROCESSED_DIR, "player_xa_tournament.csv")
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404,
+                             detail="player_xa_tournament.csv not found -- run build_xa.py first.")
+    df = pd.read_csv(path)
+    df = df.sort_values("total_xa", ascending=False)
+    return df.to_dict(orient="records")
+
+
+@app.get("/players/defensive", tags=["players"])
+def players_defensive():
+    """Danger denied per player -- successful defensive actions scored by
+    reusing the trained xT surface model at the mirrored location (see
+    build_defensive.py for the methodology)."""
+    path = os.path.join(PROCESSED_DIR, "player_defensive_tournament.csv")
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404,
+                             detail="player_defensive_tournament.csv not found -- run build_defensive.py first.")
+    df = pd.read_csv(path)
+    df = df.sort_values("total_danger_denied", ascending=False)
+    return df.to_dict(orient="records")
+
+
+@app.get("/players/setpieces", tags=["players"])
+def players_setpieces():
+    """Set-piece delivery value per player -- corners and attacking-third
+    free kicks scored by a dedicated model (see train_setpiece.py)."""
+    path = os.path.join(PROCESSED_DIR, "player_setpiece_tournament.csv")
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404,
+                             detail="player_setpiece_tournament.csv not found -- run rank_setpieces.py first.")
+    df = pd.read_csv(path)
+    df = df.sort_values("total_delivery_value", ascending=False)
+    return df.to_dict(orient="records")
+
+
+# ---------------------------------------------------------------------------
+# Score a CSV of actions from ANY match/competition, not just World Cup 2022.
+#
+# Expected CSV columns:
+#   required: start_x, start_y, end_x, end_y
+#   optional: player, team, is_carry (true/false), under_pressure (true/false),
+#             minutes_played (per player, used for per-90 if provided)
+#
+# This is what "run the model on different data" means in practice: export
+# actions in this shape (e.g. from build_dataset.py's actions.parquet on a
+# different StatsBomb competition, converted to CSV) and upload it here.
+# ---------------------------------------------------------------------------
+@app.post("/rank/csv", tags=["players"])
+async def rank_from_csv(file: UploadFile = File(...)):
+    """Upload a CSV of pass/carry actions and get back a player-level xT
+    ranking, scored live by the LightGBM model (chosen over the deep model
+    here because its raw probabilities are well-calibrated -- see README)."""
+    if _lgbm_model is None:
+        raise HTTPException(status_code=503, detail="LightGBM model not loaded.")
+
+    raw = await file.read()
+    try:
+        df = pd.read_csv(io.BytesIO(raw))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not parse CSV: {e}")
+
+    required = {"start_x", "start_y", "end_x", "end_y"}
+    missing = required - set(df.columns)
+    if missing:
+        raise HTTPException(status_code=400,
+                             detail=f"CSV is missing required columns: {sorted(missing)}")
+
+    df["is_carry"] = df["is_carry"].astype(bool) if "is_carry" in df.columns else False
+    df["under_pressure"] = df["under_pressure"].astype(bool) if "under_pressure" in df.columns else False
+    df["player"] = df["player"] if "player" in df.columns else "Unknown"
+    df["team"] = df["team"] if "team" in df.columns else "Unknown"
+
+    def score_side(prefix):
+        x = df[f"{prefix}_x"].values
+        y = df[f"{prefix}_y"].values
+        dist_goal = np.sqrt((120 - x) ** 2 + (40 - y) ** 2)
+        ang_goal = angle_to_goal(x, y)
+        X = pd.DataFrame({
+            "end_x": x, "end_y": y, "end_dist_goal": dist_goal, "end_angle_goal": ang_goal,
+            "is_pass": (~df["is_carry"]).astype(int), "is_carry": df["is_carry"].astype(int),
+            "completed_int": 1, "under_pressure_int": df["under_pressure"].astype(int),
+        })[END_STATE_FEATURES]
+        return _lgbm_model.predict_proba(X)[:, 1]
+
+    df["xt_added"] = score_side("end") - score_side("start")
+
+    grouped = (
+        df.groupby(["player", "team"])
+        .agg(total_xt_added=("xt_added", "sum"), total_actions=("xt_added", "count"))
+        .reset_index()
+        .sort_values("total_xt_added", ascending=False)
+    )
+
+    if "minutes_played" in df.columns:
+        minutes = df.groupby("player")["minutes_played"].max()
+        grouped["total_minutes"] = grouped["player"].map(minutes)
+        grouped["xt_per90"] = grouped["total_xt_added"] / grouped["total_minutes"].clip(lower=1) * 90
+
+    return {
+        "rows_scored": len(df),
+        "players": grouped.to_dict(orient="records"),
     }
