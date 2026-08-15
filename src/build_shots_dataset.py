@@ -1,10 +1,3 @@
-"""
-Build a shot-level dataset for Expected Goals (xG), used as the second task
-in the multi-task model alongside xT (possession-value on passes/carries).
-
-StatsBomb also ships its own professional xG value per shot (statsbomb_xg) --
-we keep it as a benchmark to sanity-check our own trained model against.
-"""
 import json
 import os
 import glob
@@ -24,7 +17,6 @@ def process_match_shots(events, match_id):
         loc = e.get("location")
         if not loc:
             continue
-
         outcome = shot.get("outcome", {}).get("name")
         rows.append({
             "match_id": match_id,
@@ -32,13 +24,13 @@ def process_match_shots(events, match_id):
             "minute": e.get("minute"),
             "team": e.get("team", {}).get("name"),
             "player": e.get("player", {}).get("name"),
-            "x": loc[0],
-            "y": loc[1],
+            "x": loc[0], "y": loc[1],
             "body_part": shot.get("body_part", {}).get("name"),
             "technique": shot.get("technique", {}).get("name"),
-            "shot_type": shot.get("type", {}).get("name"),  # Open Play, Free Kick, Penalty...
+            "shot_type": shot.get("type", {}).get("name"),
             "under_pressure": bool(e.get("under_pressure", False)),
             "first_time": bool(shot.get("first_time", False)),
+            "key_pass_id": shot.get("key_pass_id"),
             "statsbomb_xg": shot.get("statsbomb_xg"),
             "is_goal": int(outcome == "Goal"),
         })
@@ -59,8 +51,6 @@ def build(out_name="shots.parquet"):
     out_path = os.path.join(PROCESSED_DIR, out_name)
     df.to_parquet(out_path, index=False)
     print(f"Wrote {len(df):,} shots from {len(files)} matches -> {out_path}")
-    print(f"Goal rate: {df['is_goal'].mean():.4f}")
-    print(f"Mean StatsBomb xG: {df['statsbomb_xg'].mean():.4f}")
     return df
 
 
