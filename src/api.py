@@ -58,15 +58,20 @@ app.add_middleware(
 _lgbm_model = None
 _deep_model = None
 _deep_ckpt = None
+_gamestate_model = None
 
 
 @app.on_event("startup")
 def load_models():
-    global _lgbm_model, _deep_model, _deep_ckpt
+    global _lgbm_model, _deep_model, _deep_ckpt, _gamestate_model
 
     lgbm_path = os.path.join(MODELS_DIR, "lgbm_baseline.pkl")
     if os.path.exists(lgbm_path):
         _lgbm_model = joblib.load(lgbm_path)
+
+    gamestate_path = os.path.join(MODELS_DIR, "lgbm_gamestate.pkl")
+    if os.path.exists(gamestate_path):
+        _gamestate_model = joblib.load(gamestate_path)
 
     deep_path = os.path.join(MODELS_DIR, "xtnet.pt")
     if TORCH_AVAILABLE and os.path.exists(deep_path):
@@ -88,6 +93,8 @@ class PassInput(BaseModel):
     end_y: float = Field(..., ge=0, le=80, description="End Y")
     is_carry: bool = Field(False, description="True for a carry, False for a pass")
     under_pressure: bool = Field(False, description="Was the player under pressure?")
+    score_diff: int | None = Field(None, description="Goal difference for the team in possession (e.g. -1 if trailing by one). Omit to use the location-only model.")
+    minutes_remaining: float | None = Field(None, description="Minutes left in the match. Omit to use the location-only model.")
 
     class Config:
         json_schema_extra = {
@@ -95,6 +102,7 @@ class PassInput(BaseModel):
                 "start_x": 80.0, "start_y": 40.0,
                 "end_x": 110.0, "end_y": 40.0,
                 "is_carry": False, "under_pressure": False,
+                "score_diff": None, "minutes_remaining": None,
             }
         }
 
@@ -109,6 +117,7 @@ class XTResult(BaseModel):
 class XTResponse(BaseModel):
     lgbm: XTResult | None = None
     deep: XTResult | None = None
+    gamestate: XTResult | None = None
 
 
 def _build_row(x, y, is_carry, under_pressure):
@@ -126,6 +135,14 @@ def _score_lgbm(row):
     import pandas as pd
     X = pd.DataFrame([row])[END_STATE_FEATURES]
     return float(_lgbm_model.predict_proba(X)[0, 1])
+
+
+def _score_gamestate(row, score_diff, minutes_remaining):
+    import pandas as pd
+    from train_gamestate import GAMESTATE_FEATURES
+    full_row = {**row, "score_diff": score_diff, "minutes_remaining": minutes_remaining}
+    X = pd.DataFrame([full_row])[GAMESTATE_FEATURES]
+    return float(_gamestate_model.predict_proba(X)[0, 1])
 
 
 def _score_deep(row):
@@ -157,6 +174,13 @@ def predict_xt(action: PassInput):
         p_start, p_end = _score_deep(start_row), _score_deep(end_row)
         response["deep"] = XTResult(model="xtnet_mlp", p_start=p_start, p_end=p_end,
                                      xt_added=p_end - p_start)
+
+    if (_gamestate_model is not None and action.score_diff is not None
+            and action.minutes_remaining is not None):
+        p_start = _score_gamestate(start_row, action.score_diff, action.minutes_remaining)
+        p_end = _score_gamestate(end_row, action.score_diff, action.minutes_remaining)
+        response["gamestate"] = XTResult(model="lgbm_gamestate", p_start=p_start, p_end=p_end,
+                                          xt_added=p_end - p_start)
     return response
 
 
