@@ -155,6 +155,12 @@
   .search-wrap input:focus{border-color:var(--heat-1);}
   .search-wrap svg{position:absolute; left:11px; top:50%; transform:translateY(-50%); opacity:0.5;}
   .min-note{font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--muted-2); margin-left:auto;}
+  #uploadSelect{
+    font-family:'JetBrains Mono',monospace; font-size:12px;
+    background:var(--surface); border:1px solid var(--border); color:var(--text);
+    padding:8px 10px; border-radius:8px; outline:none; cursor:pointer; max-width:260px;
+  }
+  #uploadSelect:focus{border-color:var(--heat-1);}
 
   /* ---------- LEADERBOARD ---------- */
   .board{border:1px solid var(--border); border-radius:14px; overflow:hidden; background:var(--surface);}
@@ -291,7 +297,9 @@
       <button class="toggle-btn" data-mode="xa">xA</button>
       <button class="toggle-btn" data-mode="defense">Defense</button>
       <button class="toggle-btn" data-mode="setpieces">Set Pieces</button>
+      <button class="toggle-btn" data-mode="uploads" id="uploadsToggleBtn" style="display:none;">Uploads</button>
     </div>
+    <select id="uploadSelect" style="display:none;"></select>
     <div class="search-wrap">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8B978E" stroke-width="2.4"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <input id="searchInput" type="text" placeholder="Search player or team...">
@@ -596,6 +604,12 @@ let SETPIECES = [
 }));
 let setpiecesLoaded = false;
 
+// Every CSV run stays here, independent of the World Cup 2022 dataset above --
+// uploading never overwrites PLAYERS, so Total xT / Per 90 always show the
+// trained tournament data no matter how many CSVs you've run.
+let UPLOADS = [];
+let currentUploadIndex = -1;
+
 const boardBody = document.getElementById('boardBody');
 const searchInput = document.getElementById('searchInput');
 const minNote = document.getElementById('minNote');
@@ -607,7 +621,9 @@ function render(){
   const isXA = currentMode === 'xa';
   const isDefense = currentMode === 'defense';
   const isSetpieces = currentMode === 'setpieces';
-  const sourceData = isProgressive ? PROGRESSIVE : isXA ? XA : isDefense ? DEFENSE : isSetpieces ? SETPIECES : PLAYERS;
+  const isUploads = currentMode === 'uploads';
+  const sourceData = isProgressive ? PROGRESSIVE : isXA ? XA : isDefense ? DEFENSE
+    : isSetpieces ? SETPIECES : isUploads ? (UPLOADS[currentUploadIndex]?.players || []) : PLAYERS;
   let rows = sourceData.filter(p => p.player.toLowerCase().includes(q) || p.team.toLowerCase().includes(q));
 
   if(isProgressive){
@@ -622,6 +638,9 @@ function render(){
   } else if(isSetpieces){
     rows.sort((a,b)=> b.total_delivery_value - a.total_delivery_value);
     minNote.textContent = `${rows.length} players shown`;
+  } else if(isUploads){
+    rows.sort((a,b)=> b.total - a.total);
+    minNote.textContent = UPLOADS[currentUploadIndex] ? `${rows.length} players · ${UPLOADS[currentUploadIndex].rowsScored} actions scored` : 'No uploads yet';
   } else if(currentMode === 'per90'){
     rows = rows.filter(p => p.minutes >= 300); // avoid tiny-sample noise in this view
     rows.sort((a,b)=> b.per90 - a.per90);
@@ -635,7 +654,7 @@ function render(){
                : isXA ? (rows[0]?.total_xa || 1)
                : isDefense ? (rows[0]?.total_denied || 1)
                : isSetpieces ? (rows[0]?.total_delivery_value || 1)
-               : currentMode === 'per90' ? (rows[0]?.per90 || 1)
+               : (isUploads || currentMode === 'per90') ? (isUploads ? (rows[0]?.total || 1) : (rows[0]?.per90 || 1))
                : (rows[0]?.total || 1);
 
   boardBody.innerHTML = rows.map((p,i)=>{
@@ -643,7 +662,7 @@ function render(){
               : isXA ? p.total_xa
               : isDefense ? p.total_denied
               : isSetpieces ? p.total_delivery_value
-              : (currentMode === 'per90' ? p.per90 : p.total);
+              : (isUploads ? p.total : (currentMode === 'per90' ? p.per90 : p.total));
     const pct = Math.max(3, (val/maxVal)*100);
     const color = TEAM_COLORS[p.team] || '#5E6B64';
     const rankClass = i < 3 ? 'rank top3' : 'rank';
@@ -656,10 +675,12 @@ function render(){
       ? `<span>${p.matches || 1}m</span><span>·</span><span>${p.defensive_actions} actions</span><span>·</span><span>${(p.total_denied/Math.max(p.defensive_actions,1)).toFixed(3)} /action</span>`
       : isSetpieces
       ? `<span>${p.deliveries} deliveries</span><span>·</span><span>${p.shots_created} shots created</span>`
+      : isUploads
+      ? `<span>${p.actions} actions</span>${p.minutes ? `<span>·</span><span>${p.minutes}′</span>` : ''}${p.per90 !== undefined ? `<span>·</span><span>${p.per90.toFixed(3)} /90</span>` : ''}`
       : `<span>${p.matches || 1}m</span><span>·</span><span>${p.actions !== undefined ? p.actions + ' actions' : (p.minutes||0) + "'"}</span><span>·</span><span>${(currentMode === 'per90' ? p.total : p.per90).toFixed(3)} ${currentMode === 'per90' ? 'total' : '/90'}</span>`;
 
     const displayVal = isProgressive ? val.toFixed(0) : val.toFixed(3);
-    const metaText = isSetpieces ? '' : (isProgressive || isXA || isDefense) ? `${p.minutes}′` : `${p.matches}m · ${p.minutes}′`;
+    const metaText = (isSetpieces || isUploads) ? '' : (isProgressive || isXA || isDefense) ? `${p.minutes}′` : `${p.matches}m · ${p.minutes}′`;
 
     return `
       <div class="board-row">
@@ -779,21 +800,34 @@ runModelBtn.addEventListener('click', async () => {
     const data = await res.json();
     if(!res.ok) throw new Error(data.detail || 'Scoring failed');
 
-    PLAYERS = data.players.map(p => ({
+    const players = data.players.map(p => ({
       player: p.player, team: p.team,
       total: p.total_xt_added,
-      minutes: p.total_minutes || 90 * (p.total_actions || 1),
-      matches: 1,
-      per90: p.xt_per90 !== undefined ? p.xt_per90 : (p.total_xt_added / 1) * 90,
       actions: p.total_actions,
+      minutes: p.total_minutes,
+      per90: p.xt_per90,
     }));
-    usingLiveData = true;
-    datasetLabel = `Uploaded: ${selectedFile.name} · ${data.rows_scored} actions scored`;
-    updateLeaderboardNote();
+
+    UPLOADS.push({
+      label: selectedFile.name,
+      timestamp: new Date().toLocaleTimeString(),
+      rowsScored: data.rows_scored,
+      playerCount: players.length,
+      players,
+    });
+    currentUploadIndex = UPLOADS.length - 1;
+    refreshUploadSelect();
+
+    // Switch the leaderboard to the Uploads tab so the result is immediately visible,
+    // WITHOUT touching PLAYERS -- Total xT / Per 90 still show World Cup 2022 untouched.
+    document.querySelectorAll('.toggle-btn').forEach(b=>b.classList.remove('active'));
+    document.getElementById('uploadsToggleBtn').classList.add('active');
+    currentMode = 'uploads';
     render();
 
     uploadStatus.className = 'upload-status success';
-    uploadStatus.textContent = `Scored ${data.rows_scored} actions across ${data.players.length} players. Leaderboard updated below.`;
+    uploadStatus.textContent = `Scored ${data.rows_scored} actions across ${players.length} players. ` +
+      `Switched to the "Uploads" tab below — your other ${UPLOADS.length - 1} upload(s) and the World Cup 2022 data are still there, pick from the dropdown.`;
   }catch(err){
     uploadStatus.className = 'upload-status error';
     uploadStatus.textContent = `${err.message} — check the CSV has the required columns and the API is running.`;
@@ -801,6 +835,23 @@ runModelBtn.addEventListener('click', async () => {
     runModelBtn.disabled = false;
     runModelBtn.textContent = 'Run model →';
   }
+});
+
+const uploadSelect = document.getElementById('uploadSelect');
+const uploadsToggleBtn = document.getElementById('uploadsToggleBtn');
+
+function refreshUploadSelect(){
+  uploadsToggleBtn.style.display = '';
+  uploadSelect.style.display = '';
+  uploadSelect.innerHTML = UPLOADS.map((u, i) =>
+    `<option value="${i}">${u.label} (${u.timestamp}) — ${u.playerCount} players</option>`
+  ).join('');
+  uploadSelect.value = currentUploadIndex;
+}
+
+uploadSelect.addEventListener('change', () => {
+  currentUploadIndex = parseInt(uploadSelect.value, 10);
+  if(currentMode === 'uploads') render();
 });
 
 document.querySelectorAll('.toggle-btn').forEach(btn=>{
