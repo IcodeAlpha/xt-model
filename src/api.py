@@ -31,6 +31,44 @@ except ImportError:
 
 MODELS_DIR = os.path.join(os.path.dirname(__file__), "..", "models")
 PROCESSED_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "processed")
+UPLOADS_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "uploads")
+
+
+def _save_upload(filename, rows_scored, players):
+    """Persist a scored upload to disk as JSON, so it survives page reloads
+    and server restarts -- no database needed, just a file per upload."""
+    import json as json_module
+    import time
+    os.makedirs(UPLOADS_DIR, exist_ok=True)
+    upload_id = f"{int(time.time() * 1000)}"
+    record = {
+        "id": upload_id,
+        "filename": filename,
+        "uploaded_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "rows_scored": rows_scored,
+        "players": players,
+    }
+    with open(os.path.join(UPLOADS_DIR, f"{upload_id}.json"), "w") as f:
+        json_module.dump(record, f)
+    return upload_id
+
+
+def _list_uploads():
+    """Metadata only (no player data) -- keeps the list endpoint light."""
+    import json as json_module
+    if not os.path.exists(UPLOADS_DIR):
+        return []
+    records = []
+    for fname in sorted(os.listdir(UPLOADS_DIR), reverse=True):  # newest first
+        if not fname.endswith(".json"):
+            continue
+        with open(os.path.join(UPLOADS_DIR, fname)) as f:
+            r = json_module.load(f)
+        records.append({
+            "id": r["id"], "filename": r["filename"], "uploaded_at": r["uploaded_at"],
+            "rows_scored": r["rows_scored"], "player_count": len(r["players"]),
+        })
+    return records
 
 app = FastAPI(
     title="Expected Threat (xT) API",
@@ -329,7 +367,29 @@ async def rank_from_csv(file: UploadFile = File(...)):
         grouped["total_minutes"] = grouped["player"].map(minutes)
         grouped["xt_per90"] = grouped["total_xt_added"] / grouped["total_minutes"].clip(lower=1) * 90
 
+    players_records = grouped.to_dict(orient="records")
+    upload_id = _save_upload(file.filename, len(df), players_records)
+
     return {
+        "upload_id": upload_id,
         "rows_scored": len(df),
-        "players": grouped.to_dict(orient="records"),
+        "players": players_records,
     }
+
+
+@app.get("/uploads", tags=["uploads"])
+def list_uploads():
+    """List every past CSV upload (metadata only, not the full player data --
+    use /uploads/{id} to fetch a specific one's results). Newest first."""
+    return _list_uploads()
+
+
+@app.get("/uploads/{upload_id}", tags=["uploads"])
+def get_upload(upload_id: str):
+    """Fetch a specific past upload's full scored results."""
+    import json as json_module
+    path = os.path.join(UPLOADS_DIR, f"{upload_id}.json")
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail=f"Upload {upload_id} not found.")
+    with open(path) as f:
+        return json_module.load(f)

@@ -731,6 +731,7 @@ async function checkApiAndLoad(){
     apiBannerSub.textContent = `lgbm: ${health.lgbm_loaded ? 'loaded' : 'missing'} · deep: ${health.deep_loaded ? 'loaded' : 'unavailable'} — loading full 677-player dataset...`;
 
     await loadFullTournament();
+    await loadPastUploads();
   }catch(err){
     apiBanner.className = 'api-banner offline';
     apiBannerTitle.textContent = 'Model API not running — showing a cached top-60 snapshot';
@@ -757,6 +758,33 @@ async function loadFullTournament(){
   }catch(err){
     apiBannerSub.textContent = 'Connected, but failed to load /players/tournament — check the API logs.';
   }
+}
+
+async function loadPastUploads(){
+  try{
+    const res = await fetch(`${API_BASE}/uploads`);
+    if(!res.ok) return;
+    const list = await res.json();
+    if(list.length === 0) return;
+
+    // Fetch full player data for each past upload (newest first, as returned).
+    const fetched = await Promise.all(list.map(meta =>
+      fetch(`${API_BASE}/uploads/${meta.id}`).then(r => r.json())
+    ));
+
+    UPLOADS = fetched.reverse().map(u => ({  // reverse so oldest-first in the dropdown, matching upload order
+      label: u.filename,
+      timestamp: u.uploaded_at,
+      rowsScored: u.rows_scored,
+      playerCount: u.players.length,
+      players: u.players.map(p => ({
+        player: p.player, team: p.team, total: p.total_xt_added,
+        actions: p.total_actions, minutes: p.total_minutes, per90: p.xt_per90,
+      })),
+    }));
+    currentUploadIndex = UPLOADS.length - 1; // default to most recent
+    refreshUploadSelect();
+  }catch(err){ /* no past uploads reachable -- not a big deal, just skip */ }
 }
 
 function updateLeaderboardNote(){
