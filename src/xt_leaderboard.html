@@ -222,6 +222,38 @@
   }
   .footnote b{color:var(--muted);}
 
+  /* ---------- PLAYER PROFILE MODAL ---------- */
+  .profile-overlay{
+    position:fixed; inset:0; background:rgba(6,10,8,0.75); backdrop-filter:blur(3px);
+    display:none; align-items:center; justify-content:center; z-index:100; padding:20px;
+  }
+  .profile-overlay.open{display:flex;}
+  .profile-card{
+    background:var(--surface); border:1px solid var(--border); border-radius:16px;
+    max-width:720px; width:100%; max-height:88vh; overflow-y:auto;
+    padding:28px; position:relative;
+  }
+  .profile-close{
+    position:absolute; top:16px; right:16px; background:var(--surface-2); border:1px solid var(--border);
+    color:var(--muted); width:32px; height:32px; border-radius:50%; font-size:20px; line-height:1;
+    cursor:pointer; display:flex; align-items:center; justify-content:center;
+  }
+  .profile-close:hover{color:var(--text); border-color:var(--heat-1);}
+  .profile-header{display:flex; align-items:center; gap:16px; margin-bottom:24px;}
+  .profile-chip{width:6px; height:52px; border-radius:3px; flex-shrink:0;}
+  .profile-name{font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:28px; text-transform:uppercase;}
+  .profile-team{color:var(--muted); font-size:14px; margin-top:2px;}
+  .profile-body{display:flex; gap:28px; flex-wrap:wrap;}
+  .profile-radar-wrap{flex:1; min-width:260px;}
+  .profile-radar-note{font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--muted-2); text-align:center; margin-top:8px;}
+  .profile-stats{flex:1; min-width:240px; display:flex; flex-direction:column; gap:12px;}
+  .profile-stat-row{border:1px solid var(--border); border-radius:10px; padding:12px 14px; background:var(--surface-2);}
+  .profile-stat-row.missing{opacity:0.4;}
+  .profile-stat-label{font-family:'JetBrains Mono',monospace; font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:var(--muted-2);}
+  .profile-stat-value{font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:22px; color:var(--heat-2); margin-top:2px;}
+  .profile-stat-sub{font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--muted); margin-top:2px;}
+  .profile-loading{text-align:center; padding:16px; font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--muted);}
+
   @media (max-width:640px){
     .board-row{grid-template-columns:28px 1fr 100px; gap:10px; padding:11px 14px;}
     .meta-cell{display:none;}
@@ -335,6 +367,27 @@
   multi-task xG model. Minutes played computed from Starting XI and substitution events; red-card
   exits aren't modeled, so a small number of players may show slightly inflated minutes.
   Data: <b>StatsBomb Open Data</b>, FIFA World Cup 2022.
+</div>
+
+<div id="profileOverlay" class="profile-overlay">
+  <div id="profileCard" class="profile-card">
+    <button id="profileClose" class="profile-close">&times;</button>
+    <div class="profile-header">
+      <div class="profile-chip" id="profileChip"></div>
+      <div>
+        <div class="profile-name" id="profileName"></div>
+        <div class="profile-team" id="profileTeam"></div>
+      </div>
+    </div>
+    <div class="profile-body">
+      <div class="profile-radar-wrap">
+        <canvas id="profileRadar" height="260"></canvas>
+        <div class="profile-radar-note">Percentile among all players with this stat — 100 = tournament-best.</div>
+      </div>
+      <div class="profile-stats" id="profileStats"></div>
+    </div>
+    <div class="profile-loading" id="profileLoading" style="display:none;">Loading full profile...</div>
+  </div>
 </div>
 
 <script>
@@ -681,9 +734,11 @@ function render(){
 
     const displayVal = isProgressive ? val.toFixed(0) : val.toFixed(3);
     const metaText = (isSetpieces || isUploads) ? '' : (isProgressive || isXA || isDefense) ? `${p.minutes}′` : `${p.matches}m · ${p.minutes}′`;
+    const safeName = p.player.replace(/"/g, '&quot;');
+    const safeTeam = p.team.replace(/"/g, '&quot;');
 
     return `
-      <div class="board-row">
+      <div class="board-row" data-player="${safeName}" data-team="${safeTeam}" style="cursor:pointer;">
         <div class="${rankClass}">${i+1}</div>
         <div class="player-cell">
           <div class="team-chip" style="background:${color}"></div>
@@ -1008,6 +1063,154 @@ new Chart(ctx, {
     }
   }
 });
+
+// ---------- Player profile modal ----------
+const profileOverlay = document.getElementById('profileOverlay');
+const profileClose = document.getElementById('profileClose');
+const profileChip = document.getElementById('profileChip');
+const profileName = document.getElementById('profileName');
+const profileTeam = document.getElementById('profileTeam');
+const profileStats = document.getElementById('profileStats');
+const profileLoading = document.getElementById('profileLoading');
+let profileRadarChart = null;
+
+function percentileOf(value, allValues){
+  if(allValues.length === 0) return null;
+  const below = allValues.filter(v => v <= value).length;
+  return (below / allValues.length) * 100;
+}
+
+function findByName(arr, name){
+  return arr.find(p => p.player === name);
+}
+
+const PROFILE_METRICS = [
+  { key: 'xt', label: 'Expected Threat', axis: 'xT',
+    get: name => findByName(PLAYERS, name),
+    value: p => p.total, all: () => PLAYERS.map(p => p.total),
+    sub: p => `${p.actions ?? '?'} actions · ${p.minutes ?? '?'}′` },
+  { key: 'progressive', label: 'Progressive Actions', axis: 'Progressive',
+    get: name => findByName(PROGRESSIVE, name),
+    value: p => p.progressive_actions, all: () => PROGRESSIVE.map(p => p.progressive_actions),
+    sub: p => `${p.progressive_passes} passes · ${p.progressive_carries} carries` },
+  { key: 'xa', label: 'Expected Assists', axis: 'xA',
+    get: name => findByName(XA, name),
+    value: p => p.total_xa, all: () => XA.map(p => p.total_xa),
+    sub: p => `${p.key_passes} key passes` },
+  { key: 'defense', label: 'Danger Denied', axis: 'Defense',
+    get: name => findByName(DEFENSE, name),
+    value: p => p.total_denied, all: () => DEFENSE.map(p => p.total_denied),
+    sub: p => `${p.defensive_actions} defensive actions` },
+  { key: 'setpieces', label: 'Set-Piece Delivery', axis: 'Set Pieces',
+    get: name => findByName(SETPIECES, name),
+    value: p => p.total_delivery_value, all: () => SETPIECES.map(p => p.total_delivery_value),
+    sub: p => `${p.deliveries} deliveries · ${p.shots_created} shots created` },
+];
+
+async function ensureAllDatasetsLoaded(){
+  if(!usingLiveData) return; // offline: just use whatever embedded snapshots we have
+  const jobs = [];
+  if(!progressiveLoaded) jobs.push(fetch(`${API_BASE}/players/progressive`).then(r=>r.json()).then(d=>{
+    PROGRESSIVE = d.map(p=>({player:p.player, team:p.team, progressive_actions:p.progressive_actions,
+      progressive_passes:p.progressive_passes, progressive_carries:p.progressive_carries,
+      minutes:p.total_minutes, matches:p.matches_played}));
+    progressiveLoaded = true;
+  }).catch(()=>{}));
+  if(!xaLoaded) jobs.push(fetch(`${API_BASE}/players/xa`).then(r=>r.json()).then(d=>{
+    XA = d.map(p=>({player:p.player, team:p.team, total_xa:p.total_xa, key_passes:p.key_passes,
+      minutes:p.total_minutes, matches:p.matches_played}));
+    xaLoaded = true;
+  }).catch(()=>{}));
+  if(!defenseLoaded) jobs.push(fetch(`${API_BASE}/players/defensive`).then(r=>r.json()).then(d=>{
+    DEFENSE = d.map(p=>({player:p.player, team:p.team, total_denied:p.total_danger_denied,
+      defensive_actions:p.defensive_actions, minutes:p.total_minutes, matches:p.matches_played}));
+    defenseLoaded = true;
+  }).catch(()=>{}));
+  if(!setpiecesLoaded) jobs.push(fetch(`${API_BASE}/players/setpieces`).then(r=>r.json()).then(d=>{
+    SETPIECES = d.map(p=>({player:p.player, team:p.team, total_delivery_value:p.total_delivery_value,
+      deliveries:p.deliveries, shots_created:p.actual_shots_created}));
+    setpiecesLoaded = true;
+  }).catch(()=>{}));
+  await Promise.all(jobs);
+}
+
+async function openProfile(name, team){
+  profileOverlay.classList.add('open');
+  profileName.textContent = name;
+  profileTeam.textContent = team;
+  profileChip.style.background = TEAM_COLORS[team] || '#5E6B64';
+  profileStats.innerHTML = '';
+  profileLoading.style.display = 'block';
+  if(profileRadarChart){ profileRadarChart.destroy(); profileRadarChart = null; }
+
+  await ensureAllDatasetsLoaded();
+  profileLoading.style.display = 'none';
+
+  const results = PROFILE_METRICS.map(m => {
+    const row = m.get(name);
+    if(!row) return { ...m, found: false, percentile: 0 };
+    const val = m.value(row);
+    const pct = percentileOf(val, m.all());
+    return { ...m, found: true, row, val, percentile: pct ?? 0 };
+  });
+
+  profileStats.innerHTML = results.map(r => {
+    if(!r.found){
+      return `<div class="profile-stat-row missing">
+        <div class="profile-stat-label">${r.label}</div>
+        <div class="profile-stat-sub">No data for this player</div>
+      </div>`;
+    }
+    return `<div class="profile-stat-row">
+      <div class="profile-stat-label">${r.label} · ${r.percentile.toFixed(0)}th percentile</div>
+      <div class="profile-stat-value">${r.val.toFixed(r.key === 'progressive' ? 0 : 3)}</div>
+      <div class="profile-stat-sub">${r.sub(r.row)}</div>
+    </div>`;
+  }).join('');
+
+  const radarCtx = document.getElementById('profileRadar').getContext('2d');
+  profileRadarChart = new Chart(radarCtx, {
+    type: 'radar',
+    data: {
+      labels: results.map(r => r.axis),
+      datasets: [{
+        data: results.map(r => r.percentile),
+        backgroundColor: 'rgba(255,122,61,0.18)',
+        borderColor: '#FF7A3D',
+        pointBackgroundColor: '#FFB238',
+        borderWidth: 2,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        r: {
+          min: 0, max: 100,
+          ticks: { display: false, stepSize: 25 },
+          grid: { color: '#22302A' },
+          angleLines: { color: '#22302A' },
+          pointLabels: { color: '#8B978E', font: { family: 'JetBrains Mono', size: 11 } },
+        }
+      }
+    }
+  });
+}
+
+function closeProfile(){
+  profileOverlay.classList.remove('open');
+}
+
+profileClose.addEventListener('click', closeProfile);
+profileOverlay.addEventListener('click', (e) => { if(e.target === profileOverlay) closeProfile(); });
+document.addEventListener('keydown', (e) => { if(e.key === 'Escape') closeProfile(); });
+
+boardBody.addEventListener('click', (e) => {
+  const row = e.target.closest('.board-row[data-player]');
+  if(!row) return;
+  openProfile(row.dataset.player, row.dataset.team);
+});
+
 </script>
 
 </body>
