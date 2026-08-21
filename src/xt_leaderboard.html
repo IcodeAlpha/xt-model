@@ -329,6 +329,8 @@
       <button class="toggle-btn" data-mode="xa">xA</button>
       <button class="toggle-btn" data-mode="defense">Defense</button>
       <button class="toggle-btn" data-mode="setpieces">Set Pieces</button>
+      <button class="toggle-btn" data-mode="pressing">Pressing</button>
+      <button class="toggle-btn" data-mode="pressresist">Press-Resistance</button>
       <button class="toggle-btn" data-mode="uploads" id="uploadsToggleBtn" style="display:none;">Uploads</button>
     </div>
     <select id="uploadSelect" style="display:none;"></select>
@@ -657,6 +659,100 @@ let SETPIECES = [
 }));
 let setpiecesLoaded = false;
 
+// Pressing value dataset (fallback snapshot; live-fetched from /players/pressing when API is up)
+let PRESSING = [
+["Nicolás Alejandro Tagliafico","Argentina",9.9160,56,24],
+["David Raum","Germany",8.9647,43,20],
+["Thiago Emiliano da Silva","Brazil",7.4813,22,13],
+["Kendall Jamaal Waston Manley","Costa Rica",6.6584,20,11],
+["Bernardo Mota Veiga de Carvalho e Silva","Portugal",6.6394,57,22],
+["Daniel Alves da Silva","Brazil",6.6210,16,10],
+["Jude Bellingham","England",6.5551,70,24],
+["Bukayo Saka","England",6.2848,49,20],
+["Angelo Smit Preciado Quiñónez","Ecuador",5.7460,40,16],
+["Fábio Henrique Tavares","Brazil",5.7042,15,9],
+["Noussair Mazraoui","Morocco",5.6568,44,16],
+["Orbelín Pineda Alvarado","Mexico",5.5537,23,11],
+["Cristian Gabriel Romero","Argentina",5.4750,58,17],
+["Adrien Rabiot","France",5.3943,84,24],
+["Alex Sandro Lobo Silva","Brazil",5.3775,21,11],
+["Pablo Martín Páez Gavira","Spain",5.3604,57,20],
+["Edson Omar Álvarez Velázquez","Mexico",5.2923,32,12],
+["Joe Rodon","Wales",5.2626,23,10],
+["Otávio Edmilson da Silva Monteiro","Portugal",5.1412,45,16],
+["Kalidou Koulibaly","Senegal",5.0969,34,12],
+["Mathías Olivera Miramontes","Uruguay",4.9567,45,15],
+["Sergio Busquets i Burgos","Spain",4.9270,40,14],
+["Memphis Depay","Netherlands",4.8695,45,17],
+["Eduardo Camavinga","France",4.8626,28,11],
+["Christian Pulisic","United States",4.8126,44,18],
+["Abdul Rahman Baba","Ghana",4.7766,28,12],
+["Dejan Lovren","Croatia",4.6202,37,12],
+["Thilo Kehrer","Germany",4.5797,21,9],
+["João Maria Lobo Alves Palhinha Gonçalves","Portugal",4.5611,12,7],
+["Harry Maguire","England",4.5111,17,8],
+["Lucas Tolentino Coelho de Lima","Brazil",4.4247,59,19],
+["Enzo Fernandez","Argentina",4.2707,107,27],
+["Alejandro Balde Martínez","Spain",4.1310,20,9],
+["Ferrán Torres García","Spain",4.1296,30,13],
+["Rúben Santos Gato Alves Dias","Portugal",4.0891,17,8],
+["Ibrahima Konaté","France",4.0591,16,7],
+["Harry Wilson","Wales",4.0082,16,8],
+["Marcos Llorente Moreno","Spain",3.9896,16,8],
+["Cyle Larin","Canada",3.9078,21,10],
+["César Azpilicueta Tanco","Spain",3.9048,9,6]
+].map(([player,team,pressing_value_added,pressures,actual_regains])=>({
+  player, team, pressing_value_added, pressures, actual_regains
+}));
+let pressingLoaded = false;
+
+// Press-resistance dataset (fallback snapshot; live-fetched from /players/pressresistance when API is up)
+let PRESSRESIST = [
+["Lionel Andrés Messi Cuccittini","Argentina",3.9474,75,0.8667],
+["Steven Bergwijn","Netherlands",2.6685,17,0.9412],
+["Kylian Mbappé Lottin","France",2.3738,26,0.8462],
+["Harry Souttar","Australia",2.0716,20,0.8500],
+["Saud Abdullah Abdul Hamid","Saudi Arabia",2.0478,10,0.7000],
+["Manuel Obafemi Akanji","Switzerland",1.9548,20,0.9000],
+["Alistair Johnston","Canada",1.8757,21,1.0000],
+["Salis Abdul Samed","Ghana",1.8446,15,1.0000],
+["Vanja Milinković Savić","Serbia",1.7897,12,0.5833],
+["Yunus Dimoara Musah","United States",1.6697,23,0.9565],
+["Kyle Walker","England",1.5763,16,0.8750],
+["Toby Alderweireld","Belgium",1.4580,23,0.9130],
+["Unai Simón Mendibil","Spain",1.4431,25,0.9200],
+["Abdelkarim Hassan Al Haj Fadlalla","Qatar",1.4071,21,0.8095],
+["Moon-Hwan Kim","South Korea",1.3927,23,0.8696],
+["Devis Rogers Epassy Mboka","Cameroon",1.2988,10,0.6000],
+["Thomas Meunier","Belgium",1.2828,19,0.6842],
+["Mathew Ryan","Australia",1.2686,20,0.6500],
+["Achraf Hakimi Mouh","Morocco",1.1363,45,0.8000],
+["Sergino Dest","United States",1.0580,10,0.9000],
+["Serge Gnabry","Germany",0.9797,17,0.8824],
+["Ousmane Dembélé","France",0.9576,21,0.9048],
+["Antonio Rüdiger","Germany",0.9510,25,0.8800],
+["Joshua Kimmich","Germany",0.9286,30,0.8333],
+["Timothy Weah","United States",0.9224,20,0.8500],
+["Eden Hazard","Belgium",0.9003,15,0.8667],
+["Edimilson Fernandes","Switzerland",0.7845,10,0.9000],
+["Cristian Gabriel Romero","Argentina",0.6700,34,0.8235],
+["Jhegson Sebastián Méndez Carabalí","Ecuador",0.6678,12,0.9167],
+["Raheem Sterling","England",0.6618,16,0.8750],
+["Matías Vecino Falero","Uruguay",0.6335,14,0.9286],
+["Amadou Onana","Belgium",0.5978,12,1.0000],
+["Bernardo Mota Veiga de Carvalho e Silva","Portugal",0.5570,32,0.8438],
+["Akram Hassan Afif","Qatar",0.5439,31,0.9032],
+["Iñaki Williams Arthuer","Ghana",0.5330,11,0.8182],
+["Vitor Machado Ferreira","Portugal",0.4589,13,0.9231],
+["Djibril Sow","Switzerland",0.4489,12,1.0000],
+["Yann Sommer","Switzerland",0.4430,12,0.8333],
+["Saša Lukić","Serbia",0.4043,21,0.9048],
+["Jackson Irvine","Australia",0.3812,22,0.8182]
+].map(([player,team,press_resistance,pressured_passes,completion_rate])=>({
+  player, team, press_resistance, pressured_passes, completion_rate
+}));
+let pressresistLoaded = false;
+
 // Every CSV run stays here, independent of the World Cup 2022 dataset above --
 // uploading never overwrites PLAYERS, so Total xT / Per 90 always show the
 // trained tournament data no matter how many CSVs you've run.
@@ -674,9 +770,12 @@ function render(){
   const isXA = currentMode === 'xa';
   const isDefense = currentMode === 'defense';
   const isSetpieces = currentMode === 'setpieces';
+  const isPressing = currentMode === 'pressing';
+  const isPressresist = currentMode === 'pressresist';
   const isUploads = currentMode === 'uploads';
   const sourceData = isProgressive ? PROGRESSIVE : isXA ? XA : isDefense ? DEFENSE
-    : isSetpieces ? SETPIECES : isUploads ? (UPLOADS[currentUploadIndex]?.players || []) : PLAYERS;
+    : isSetpieces ? SETPIECES : isPressing ? PRESSING : isPressresist ? PRESSRESIST
+    : isUploads ? (UPLOADS[currentUploadIndex]?.players || []) : PLAYERS;
   let rows = sourceData.filter(p => p.player.toLowerCase().includes(q) || p.team.toLowerCase().includes(q));
 
   if(isProgressive){
@@ -691,6 +790,12 @@ function render(){
   } else if(isSetpieces){
     rows.sort((a,b)=> b.total_delivery_value - a.total_delivery_value);
     minNote.textContent = `${rows.length} players shown`;
+  } else if(isPressing){
+    rows.sort((a,b)=> b.pressing_value_added - a.pressing_value_added);
+    minNote.textContent = `${rows.length} players shown`;
+  } else if(isPressresist){
+    rows.sort((a,b)=> b.press_resistance - a.press_resistance);
+    minNote.textContent = `${rows.length} players, min 10 pressured passes`;
   } else if(isUploads){
     rows.sort((a,b)=> b.total - a.total);
     minNote.textContent = UPLOADS[currentUploadIndex] ? `${rows.length} players · ${UPLOADS[currentUploadIndex].rowsScored} actions scored` : 'No uploads yet';
@@ -707,6 +812,8 @@ function render(){
                : isXA ? (rows[0]?.total_xa || 1)
                : isDefense ? (rows[0]?.total_denied || 1)
                : isSetpieces ? (rows[0]?.total_delivery_value || 1)
+               : isPressing ? (rows[0]?.pressing_value_added || 1)
+               : isPressresist ? (rows[0]?.press_resistance || 1)
                : (isUploads || currentMode === 'per90') ? (isUploads ? (rows[0]?.total || 1) : (rows[0]?.per90 || 1))
                : (rows[0]?.total || 1);
 
@@ -715,6 +822,8 @@ function render(){
               : isXA ? p.total_xa
               : isDefense ? p.total_denied
               : isSetpieces ? p.total_delivery_value
+              : isPressing ? p.pressing_value_added
+              : isPressresist ? p.press_resistance
               : (isUploads ? p.total : (currentMode === 'per90' ? p.per90 : p.total));
     const pct = Math.max(3, (val/maxVal)*100);
     const color = TEAM_COLORS[p.team] || '#5E6B64';
@@ -728,12 +837,16 @@ function render(){
       ? `<span>${p.matches || 1}m</span><span>·</span><span>${p.defensive_actions} actions</span><span>·</span><span>${(p.total_denied/Math.max(p.defensive_actions,1)).toFixed(3)} /action</span>`
       : isSetpieces
       ? `<span>${p.deliveries} deliveries</span><span>·</span><span>${p.shots_created} shots created</span>`
+      : isPressing
+      ? `<span>${p.pressures} pressures</span><span>·</span><span>${p.actual_regains} regains</span>`
+      : isPressresist
+      ? `<span>${p.pressured_passes} pressured passes</span><span>·</span><span>${(p.completion_rate*100).toFixed(0)}% completed</span>`
       : isUploads
       ? `<span>${p.actions} actions</span>${p.minutes ? `<span>·</span><span>${p.minutes}′</span>` : ''}${p.per90 !== undefined ? `<span>·</span><span>${p.per90.toFixed(3)} /90</span>` : ''}`
       : `<span>${p.matches || 1}m</span><span>·</span><span>${p.actions !== undefined ? p.actions + ' actions' : (p.minutes||0) + "'"}</span><span>·</span><span>${(currentMode === 'per90' ? p.total : p.per90).toFixed(3)} ${currentMode === 'per90' ? 'total' : '/90'}</span>`;
 
     const displayVal = isProgressive ? val.toFixed(0) : val.toFixed(3);
-    const metaText = (isSetpieces || isUploads) ? '' : (isProgressive || isXA || isDefense) ? `${p.minutes}′` : `${p.matches}m · ${p.minutes}′`;
+    const metaText = (isSetpieces || isUploads || isPressing || isPressresist) ? '' : (isProgressive || isXA || isDefense) ? `${p.minutes}′` : `${p.matches}m · ${p.minutes}′`;
     const safeName = p.player.replace(/"/g, '&quot;');
     const safeTeam = p.team.replace(/"/g, '&quot;');
 
@@ -1001,6 +1114,35 @@ document.querySelectorAll('.toggle-btn').forEach(btn=>{
         }
       }catch(err){ /* fall back to the embedded snapshot silently */ }
     }
+    if(currentMode === 'pressing' && !pressingLoaded && usingLiveData){
+      try{
+        const res = await fetch(`${API_BASE}/players/pressing`);
+        if(res.ok){
+          const data = await res.json();
+          PRESSING = data.map(p => ({
+            player: p.player, team: p.team,
+            pressing_value_added: p.pressing_value_added,
+            pressures: p.pressures, actual_regains: p.actual_regains,
+          }));
+          pressingLoaded = true;
+        }
+      }catch(err){ /* fall back to the embedded snapshot silently */ }
+    }
+    if(currentMode === 'pressresist' && !pressresistLoaded && usingLiveData){
+      try{
+        const res = await fetch(`${API_BASE}/players/pressresistance`);
+        if(res.ok){
+          const data = await res.json();
+          PRESSRESIST = data.filter(p => p.pressured_passes >= 10).map(p => ({
+            player: p.player, team: p.team,
+            press_resistance: p.press_resistance,
+            pressured_passes: p.pressured_passes,
+            completion_rate: p.completion_rate_under_pressure,
+          }));
+          pressresistLoaded = true;
+        }
+      }catch(err){ /* fall back to the embedded snapshot silently */ }
+    }
     render();
   });
 });
@@ -1105,6 +1247,14 @@ const PROFILE_METRICS = [
     get: name => findByName(SETPIECES, name),
     value: p => p.total_delivery_value, all: () => SETPIECES.map(p => p.total_delivery_value),
     sub: p => `${p.deliveries} deliveries · ${p.shots_created} shots created` },
+  { key: 'pressing', label: 'Pressing Value', axis: 'Pressing',
+    get: name => findByName(PRESSING, name),
+    value: p => p.pressing_value_added, all: () => PRESSING.map(p => p.pressing_value_added),
+    sub: p => `${p.pressures} pressures · ${p.actual_regains} regains` },
+  { key: 'pressresist', label: 'Press-Resistance', axis: 'Resistance',
+    get: name => findByName(PRESSRESIST, name),
+    value: p => p.press_resistance, all: () => PRESSRESIST.map(p => p.press_resistance),
+    sub: p => `${p.pressured_passes} pressured passes · ${(p.completion_rate*100).toFixed(0)}% completed` },
 ];
 
 async function ensureAllDatasetsLoaded(){
@@ -1130,6 +1280,17 @@ async function ensureAllDatasetsLoaded(){
     SETPIECES = d.map(p=>({player:p.player, team:p.team, total_delivery_value:p.total_delivery_value,
       deliveries:p.deliveries, shots_created:p.actual_shots_created}));
     setpiecesLoaded = true;
+  }).catch(()=>{}));
+  if(!pressingLoaded) jobs.push(fetch(`${API_BASE}/players/pressing`).then(r=>r.json()).then(d=>{
+    PRESSING = d.map(p=>({player:p.player, team:p.team, pressing_value_added:p.pressing_value_added,
+      pressures:p.pressures, actual_regains:p.actual_regains}));
+    pressingLoaded = true;
+  }).catch(()=>{}));
+  if(!pressresistLoaded) jobs.push(fetch(`${API_BASE}/players/pressresistance`).then(r=>r.json()).then(d=>{
+    PRESSRESIST = d.filter(p=>p.pressured_passes>=10).map(p=>({player:p.player, team:p.team,
+      press_resistance:p.press_resistance, pressured_passes:p.pressured_passes,
+      completion_rate:p.completion_rate_under_pressure}));
+    pressresistLoaded = true;
   }).catch(()=>{}));
   await Promise.all(jobs);
 }

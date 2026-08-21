@@ -304,6 +304,34 @@ def players_setpieces():
     return df.to_dict(orient="records")
 
 
+@app.get("/players/pressing", tags=["players"])
+def players_pressing():
+    """Pressing value added per player -- actual regains minus expected
+    regains from a dedicated pressure-success model (see train_pressure.py,
+    rank_pressing.py)."""
+    path = os.path.join(PROCESSED_DIR, "player_pressing_tournament.csv")
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404,
+                             detail="player_pressing_tournament.csv not found -- run rank_pressing.py first.")
+    df = pd.read_csv(path)
+    df = df.sort_values("pressing_value_added", ascending=False)
+    return df.to_dict(orient="records")
+
+
+@app.get("/players/pressresistance", tags=["players"])
+def players_press_resistance():
+    """Press-resistance per player -- completions above expected specifically
+    on passes taken under pressure (see train_completion.py,
+    rank_press_resistance.py)."""
+    path = os.path.join(PROCESSED_DIR, "player_press_resistance_tournament.csv")
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404,
+                             detail="player_press_resistance_tournament.csv not found -- run rank_press_resistance.py first.")
+    df = pd.read_csv(path)
+    df = df.sort_values("press_resistance", ascending=False)
+    return df.to_dict(orient="records")
+
+
 # ---------------------------------------------------------------------------
 # Score a CSV of actions from ANY match/competition, not just World Cup 2022.
 #
