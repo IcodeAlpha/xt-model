@@ -332,6 +332,35 @@ def players_press_resistance():
     return df.to_dict(orient="records")
 
 
+@app.get("/players/aerials", tags=["players"])
+def players_aerials():
+    """Aerial duel value added per player -- wins above expected from a
+    location-based aerial win probability model (see train_aerial.py,
+    rank_aerials.py). Winner side resolved via related_events, since
+    StatsBomb only tags the loser directly."""
+    path = os.path.join(PROCESSED_DIR, "player_aerial_tournament.csv")
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404,
+                             detail="player_aerial_tournament.csv not found -- run rank_aerials.py first.")
+    df = pd.read_csv(path)
+    df = df.sort_values("aerial_value_added", ascending=False)
+    return df.to_dict(orient="records")
+
+
+@app.get("/players/dribbles", tags=["players"])
+def players_dribbles():
+    """Dribble/take-on value added per player -- completions above expected
+    from a location-based dribble success model (see train_dribble.py,
+    rank_dribbles.py)."""
+    path = os.path.join(PROCESSED_DIR, "player_dribble_tournament.csv")
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404,
+                             detail="player_dribble_tournament.csv not found -- run rank_dribbles.py first.")
+    df = pd.read_csv(path)
+    df = df.sort_values("dribble_value_added", ascending=False)
+    return df.to_dict(orient="records")
+
+
 # ---------------------------------------------------------------------------
 # Score a CSV of actions from ANY match/competition, not just World Cup 2022.
 #

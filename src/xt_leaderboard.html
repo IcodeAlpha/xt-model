@@ -331,6 +331,8 @@
       <button class="toggle-btn" data-mode="setpieces">Set Pieces</button>
       <button class="toggle-btn" data-mode="pressing">Pressing</button>
       <button class="toggle-btn" data-mode="pressresist">Press-Resistance</button>
+      <button class="toggle-btn" data-mode="aerials">Aerials</button>
+      <button class="toggle-btn" data-mode="dribbles">Dribbles</button>
       <button class="toggle-btn" data-mode="uploads" id="uploadsToggleBtn" style="display:none;">Uploads</button>
     </div>
     <select id="uploadSelect" style="display:none;"></select>
@@ -753,6 +755,100 @@ let PRESSRESIST = [
 }));
 let pressresistLoaded = false;
 
+// Aerial duel dataset (fallback snapshot; live-fetched from /players/aerials when API is up)
+let AERIALS = [
+["Dejan Lovren","Croatia",8.3973,32,25,0.7812],
+["Strahinja Pavlović","Serbia",7.1397,15,15,1.0000],
+["Harry Maguire","England",6.0308,29,22,0.7586],
+["Ricardo Iván Rodríguez Araya","Switzerland",5.4197,18,15,0.8333],
+["João Pedro Cavaco Cancelo","Portugal",5.3572,14,13,0.9286],
+["Rodrigo Hernández Cascante","Spain",5.2377,21,16,0.7619],
+["Frenkie de Jong","Netherlands",5.1873,14,12,0.8571],
+["Nikola Milenković","Serbia",4.8844,14,12,0.8571],
+["Olivier Giroud","France",4.5022,44,25,0.5682],
+["José María Giménez de Vargas","Uruguay",4.2791,13,11,0.8462],
+["Kalidou Koulibaly","Senegal",4.2138,15,12,0.8000],
+["Gue-Sung Cho","South Korea",4.2137,37,21,0.5676],
+["Adrien Rabiot","France",3.9498,25,17,0.6800],
+["Harry Souttar","Australia",3.9130,25,17,0.6800],
+["Felix Eduardo Torres Caicedo","Ecuador",3.9055,15,12,0.8000],
+["Joachim Andersen","Denmark",3.7933,27,18,0.6667],
+["Ismail Jakobs","Senegal",3.7700,15,12,0.8000],
+["Morteza Pouraliganji","Iran",3.7188,16,12,0.7500],
+["Min Jae Kim","South Korea",3.6740,14,11,0.7857],
+["Sebastián Coates Nión","Uruguay",3.4948,9,8,0.8889],
+["Virgil van Dijk","Netherlands",3.4621,28,18,0.6429],
+["Ibrahima Konaté","France",3.3439,10,9,0.9000],
+["Nicolás Alejandro Tagliafico","Argentina",3.2634,9,8,0.8889],
+["Chris Mepham","Wales",3.2259,9,8,0.8889],
+["Woo-Young Jung","South Korea",3.1450,11,9,0.8182],
+["John Stones","England",3.0874,15,11,0.7333],
+["Jan Vertonghen","Belgium",3.0355,15,11,0.7333],
+["Rúben Santos Gato Alves Dias","Portugal",3.0021,15,11,0.7333],
+["Ben Davies","Wales",2.9250,15,11,0.7333],
+["Piero Martín Hincapié Reyna","Ecuador",2.8971,11,9,0.8182],
+["Kieffer Roberto Francisco Moore","Wales",2.8300,23,13,0.5652],
+["Diego Roberto Godín Leal","Uruguay",2.7973,13,10,0.7692],
+["Jean-Charles Castelletto","Cameroon",2.7954,6,6,1.0000],
+["Thomas Teye Partey","Ghana",2.7932,13,9,0.6923],
+["David Raum","Germany",2.7283,10,8,0.8000],
+["Nicolás Hernán Otamendi","Argentina",2.7143,44,27,0.6136],
+["Manuel Obafemi Akanji","Switzerland",2.6721,15,11,0.7333],
+["Mathew Leckie","Australia",2.6371,30,17,0.5667],
+["Romain Saïss","Morocco",2.6167,10,8,0.8000],
+["Alexander Hartmann Bah","Denmark",2.5988,6,6,1.0000]
+].map(([player,team,aerial_value_added,duels,actual_wins,win_rate])=>({
+  player, team, aerial_value_added, duels, actual_wins, win_rate
+}));
+let aerialsLoaded = false;
+
+// Dribble dataset (fallback snapshot; live-fetched from /players/dribbles when API is up)
+let DRIBBLES = [
+["Lionel Andrés Messi Cuccittini","Argentina",6.4271,36,26,0.7222],
+["Jamal Musiala","Germany",5.1483,33,22,0.6667],
+["Kingsley Coman","France",4.8981,12,11,0.9167],
+["Kylian Mbappé Lottin","France",4.0156,50,30,0.6000],
+["Ángel Fabián Di María Hernández","Argentina",3.5617,29,18,0.6207],
+["Azzedine Ounahi","Morocco",3.2578,12,10,0.8333],
+["Aziz Eraltay Behich","Australia",3.0929,10,8,0.8000],
+["Ismaïla Sarr","Senegal",2.5950,13,9,0.6923],
+["Rafael Alexandre Conceição Leão","Portugal",2.5170,7,6,0.8571],
+["Iliman Ndiaye","Senegal",2.4133,9,7,0.7778],
+["Mohammed Kudus","Ghana",2.4049,15,11,0.7333],
+["Alidu Seidu","Ghana",2.3513,5,5,1.0000],
+["Hirving Rodrigo Lozano Bahena","Mexico",2.1032,6,5,0.8333],
+["Salis Abdul Samed","Ghana",1.9973,5,5,1.0000],
+["Mateo Kovačić","Croatia",1.8283,14,10,0.7143],
+["Theo Bernard François Hernández","France",1.7277,6,5,0.8333],
+["Alexis Mac Allister","Argentina",1.6230,6,5,0.8333],
+["Raphael Dias Belloli","Brazil",1.5858,11,7,0.6364],
+["Youssef En-Nesyri","Morocco",1.3291,9,6,0.6667],
+["Nicholas Williams Arthuer","Spain",1.3185,13,7,0.5385],
+["Salem Mohammed Al Dawsari","Saudi Arabia",1.2046,7,5,0.7143],
+["Vincent Paté Aboubakar","Cameroon",1.1835,7,5,0.7143],
+["Jakub Kamiński","Poland",1.1682,6,4,0.6667],
+["Sofiane Boufal","Morocco",1.1449,20,12,0.6000],
+["Jurriën David Norman Timber","Netherlands",1.1194,5,4,0.8000],
+["David Junior Hoilett","Canada",1.0290,6,4,0.6667],
+["Rodrigo Bentancur Colmán","Uruguay",1.0183,5,4,0.8000],
+["Naïm Sliti","Tunisia",1.0053,6,4,0.6667],
+["Thomas Teye Partey","Ghana",0.9751,5,4,0.8000],
+["Youssef Msakni","Tunisia",0.9724,5,4,0.8000],
+["Ali Gholizadeh","Iran",0.9437,7,4,0.5714],
+["Daichi Kamada","Japan",0.9302,7,5,0.7143],
+["Eden Hazard","Belgium",0.9230,8,5,0.6250],
+["Ritsu Doan","Japan",0.8812,10,6,0.6000],
+["Kevin De Bruyne","Belgium",0.8576,7,5,0.7143],
+["Boulaye Dia","Senegal",0.7535,6,4,0.6667],
+["Gabriel Teodoro Martinelli Silva","Brazil",0.7415,6,4,0.6667],
+["João Félix Sequeira","Portugal",0.5214,9,5,0.5556],
+["Marcus Rashford","England",0.5031,10,6,0.6000],
+["Jesper Lindstrøm","Denmark",0.4914,13,6,0.4615]
+].map(([player,team,dribble_value_added,attempts,actual_completions,success_rate])=>({
+  player, team, dribble_value_added, attempts, actual_completions, success_rate
+}));
+let dribblesLoaded = false;
+
 // Every CSV run stays here, independent of the World Cup 2022 dataset above --
 // uploading never overwrites PLAYERS, so Total xT / Per 90 always show the
 // trained tournament data no matter how many CSVs you've run.
@@ -772,9 +868,12 @@ function render(){
   const isSetpieces = currentMode === 'setpieces';
   const isPressing = currentMode === 'pressing';
   const isPressresist = currentMode === 'pressresist';
+  const isAerials = currentMode === 'aerials';
+  const isDribbles = currentMode === 'dribbles';
   const isUploads = currentMode === 'uploads';
   const sourceData = isProgressive ? PROGRESSIVE : isXA ? XA : isDefense ? DEFENSE
     : isSetpieces ? SETPIECES : isPressing ? PRESSING : isPressresist ? PRESSRESIST
+    : isAerials ? AERIALS : isDribbles ? DRIBBLES
     : isUploads ? (UPLOADS[currentUploadIndex]?.players || []) : PLAYERS;
   let rows = sourceData.filter(p => p.player.toLowerCase().includes(q) || p.team.toLowerCase().includes(q));
 
@@ -796,6 +895,12 @@ function render(){
   } else if(isPressresist){
     rows.sort((a,b)=> b.press_resistance - a.press_resistance);
     minNote.textContent = `${rows.length} players, min 10 pressured passes`;
+  } else if(isAerials){
+    rows.sort((a,b)=> b.aerial_value_added - a.aerial_value_added);
+    minNote.textContent = `${rows.length} players, min 5 duels`;
+  } else if(isDribbles){
+    rows.sort((a,b)=> b.dribble_value_added - a.dribble_value_added);
+    minNote.textContent = `${rows.length} players, min 5 attempts`;
   } else if(isUploads){
     rows.sort((a,b)=> b.total - a.total);
     minNote.textContent = UPLOADS[currentUploadIndex] ? `${rows.length} players · ${UPLOADS[currentUploadIndex].rowsScored} actions scored` : 'No uploads yet';
@@ -814,6 +919,8 @@ function render(){
                : isSetpieces ? (rows[0]?.total_delivery_value || 1)
                : isPressing ? (rows[0]?.pressing_value_added || 1)
                : isPressresist ? (rows[0]?.press_resistance || 1)
+               : isAerials ? (rows[0]?.aerial_value_added || 1)
+               : isDribbles ? (rows[0]?.dribble_value_added || 1)
                : (isUploads || currentMode === 'per90') ? (isUploads ? (rows[0]?.total || 1) : (rows[0]?.per90 || 1))
                : (rows[0]?.total || 1);
 
@@ -824,6 +931,8 @@ function render(){
               : isSetpieces ? p.total_delivery_value
               : isPressing ? p.pressing_value_added
               : isPressresist ? p.press_resistance
+              : isAerials ? p.aerial_value_added
+              : isDribbles ? p.dribble_value_added
               : (isUploads ? p.total : (currentMode === 'per90' ? p.per90 : p.total));
     const pct = Math.max(3, (val/maxVal)*100);
     const color = TEAM_COLORS[p.team] || '#5E6B64';
@@ -841,12 +950,16 @@ function render(){
       ? `<span>${p.pressures} pressures</span><span>·</span><span>${p.actual_regains} regains</span>`
       : isPressresist
       ? `<span>${p.pressured_passes} pressured passes</span><span>·</span><span>${(p.completion_rate*100).toFixed(0)}% completed</span>`
+      : isAerials
+      ? `<span>${p.duels} duels</span><span>·</span><span>${p.actual_wins} won</span><span>·</span><span>${(p.win_rate*100).toFixed(0)}%</span>`
+      : isDribbles
+      ? `<span>${p.attempts} attempts</span><span>·</span><span>${p.actual_completions} completed</span><span>·</span><span>${(p.success_rate*100).toFixed(0)}%</span>`
       : isUploads
       ? `<span>${p.actions} actions</span>${p.minutes ? `<span>·</span><span>${p.minutes}′</span>` : ''}${p.per90 !== undefined ? `<span>·</span><span>${p.per90.toFixed(3)} /90</span>` : ''}`
       : `<span>${p.matches || 1}m</span><span>·</span><span>${p.actions !== undefined ? p.actions + ' actions' : (p.minutes||0) + "'"}</span><span>·</span><span>${(currentMode === 'per90' ? p.total : p.per90).toFixed(3)} ${currentMode === 'per90' ? 'total' : '/90'}</span>`;
 
     const displayVal = isProgressive ? val.toFixed(0) : val.toFixed(3);
-    const metaText = (isSetpieces || isUploads || isPressing || isPressresist) ? '' : (isProgressive || isXA || isDefense) ? `${p.minutes}′` : `${p.matches}m · ${p.minutes}′`;
+    const metaText = (isSetpieces || isUploads || isPressing || isPressresist || isAerials || isDribbles) ? '' : (isProgressive || isXA || isDefense) ? `${p.minutes}′` : `${p.matches}m · ${p.minutes}′`;
     const safeName = p.player.replace(/"/g, '&quot;');
     const safeTeam = p.team.replace(/"/g, '&quot;');
 
@@ -1143,6 +1256,35 @@ document.querySelectorAll('.toggle-btn').forEach(btn=>{
         }
       }catch(err){ /* fall back to the embedded snapshot silently */ }
     }
+    if(currentMode === 'aerials' && !aerialsLoaded && usingLiveData){
+      try{
+        const res = await fetch(`${API_BASE}/players/aerials`);
+        if(res.ok){
+          const data = await res.json();
+          AERIALS = data.filter(p => p.duels >= 5).map(p => ({
+            player: p.player, team: p.team,
+            aerial_value_added: p.aerial_value_added,
+            duels: p.duels, actual_wins: p.actual_wins, win_rate: p.win_rate,
+          }));
+          aerialsLoaded = true;
+        }
+      }catch(err){ /* fall back to the embedded snapshot silently */ }
+    }
+    if(currentMode === 'dribbles' && !dribblesLoaded && usingLiveData){
+      try{
+        const res = await fetch(`${API_BASE}/players/dribbles`);
+        if(res.ok){
+          const data = await res.json();
+          DRIBBLES = data.filter(p => p.attempts >= 5).map(p => ({
+            player: p.player, team: p.team,
+            dribble_value_added: p.dribble_value_added,
+            attempts: p.attempts, actual_completions: p.actual_completions,
+            success_rate: p.success_rate,
+          }));
+          dribblesLoaded = true;
+        }
+      }catch(err){ /* fall back to the embedded snapshot silently */ }
+    }
     render();
   });
 });
@@ -1255,6 +1397,14 @@ const PROFILE_METRICS = [
     get: name => findByName(PRESSRESIST, name),
     value: p => p.press_resistance, all: () => PRESSRESIST.map(p => p.press_resistance),
     sub: p => `${p.pressured_passes} pressured passes · ${(p.completion_rate*100).toFixed(0)}% completed` },
+  { key: 'aerials', label: 'Aerial Duels', axis: 'Aerials',
+    get: name => findByName(AERIALS, name),
+    value: p => p.aerial_value_added, all: () => AERIALS.map(p => p.aerial_value_added),
+    sub: p => `${p.actual_wins}/${p.duels} won (${(p.win_rate*100).toFixed(0)}%)` },
+  { key: 'dribbles', label: 'Dribbles', axis: 'Dribbles',
+    get: name => findByName(DRIBBLES, name),
+    value: p => p.dribble_value_added, all: () => DRIBBLES.map(p => p.dribble_value_added),
+    sub: p => `${p.actual_completions}/${p.attempts} completed (${(p.success_rate*100).toFixed(0)}%)` },
 ];
 
 async function ensureAllDatasetsLoaded(){
@@ -1291,6 +1441,17 @@ async function ensureAllDatasetsLoaded(){
       press_resistance:p.press_resistance, pressured_passes:p.pressured_passes,
       completion_rate:p.completion_rate_under_pressure}));
     pressresistLoaded = true;
+  }).catch(()=>{}));
+  if(!aerialsLoaded) jobs.push(fetch(`${API_BASE}/players/aerials`).then(r=>r.json()).then(d=>{
+    AERIALS = d.filter(p=>p.duels>=5).map(p=>({player:p.player, team:p.team,
+      aerial_value_added:p.aerial_value_added, duels:p.duels, actual_wins:p.actual_wins, win_rate:p.win_rate}));
+    aerialsLoaded = true;
+  }).catch(()=>{}));
+  if(!dribblesLoaded) jobs.push(fetch(`${API_BASE}/players/dribbles`).then(r=>r.json()).then(d=>{
+    DRIBBLES = d.filter(p=>p.attempts>=5).map(p=>({player:p.player, team:p.team,
+      dribble_value_added:p.dribble_value_added, attempts:p.attempts,
+      actual_completions:p.actual_completions, success_rate:p.success_rate}));
+    dribblesLoaded = true;
   }).catch(()=>{}));
   await Promise.all(jobs);
 }
