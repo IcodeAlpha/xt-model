@@ -79,6 +79,14 @@ figures/               # rendered PNGs
 data/processed/        # actions.parquet -- the action-level dataset used for training
 ```
 
+## Logging local matches
+
+Open `src/live_match_logger.html` on a phone, tablet, or laptop to manually capture a match without recording video. Set the teams and match details, add player names, then select an event type and tap its location on the pitch. Passes, crosses, and carries use a start tap followed by an end tap; other location-based events use one tap. Substitutions and half-/full-time markers do not need a location.
+
+The logger records outcomes and unsuccessful actions as well as successful ones. Coordinates are normalized so the team in possession attacks from left to right; update the home-team direction setting when the teams switch ends. Events are saved in that browser's local storage, so download the CSV after the match as a backup. This is a manual event log, not continuous off-ball player tracking.
+
+To score the completed passes, crosses, and carries, run `uvicorn api:app --reload` from `src/`, open `src/xt_leaderboard.html`, and upload the exported match CSV. Other event types remain in the file but are excluded from xT scoring. The existing model was trained on World Cup 2022 data, so treat local-league scores as exploratory until you have enough local matches to train and validate a local model.
+
 ## Reproducing this
 
 ```bash
