@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0A100D">
+<title>Live Match Logger — xT</title>
+<style>
+  :root{
+    color-scheme:dark;
+    --bg:#0A100D;--surface:#111A15;--surface2:#17221C;--border:#2B3A32;
+    --text:#EDEDE3;--muted:#9BA79F;--accent:#FF9A52;--green:#5FD3A0;--danger:#FF7777;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+  main{max-width:980px;margin:0 auto;padding:24px 18px 56px}
+  h1,h2,p{margin:0}
+  h1{font-size:clamp(28px,6vw,42px);line-height:1.05;letter-spacing:-.03em}
+  h2{font-size:17px}
+  .eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.14em;color:var(--accent);font-weight:700;margin-bottom:8px}
+  .intro{color:var(--muted);max-width:680px;margin-top:12px}
+  .topline{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+  a{color:var(--green)}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px;margin-top:18px}
+  .panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+  .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  label{display:block;color:var(--muted);font-size:12px;font-weight:600;margin-bottom:5px}
+  input,select,button{font:inherit}
+  input,select{width:100%;min-height:44px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:9px 11px}
+  input:focus,select:focus,button:focus-visible,a:focus-visible,.pitch:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  button,.button-link{min-height:42px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);padding:9px 13px;font-weight:650;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
+  button:hover,.button-link:hover{border-color:var(--accent)}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#1B1008}
+  button.danger{color:var(--danger)}
+  button:disabled{opacity:.42;cursor:not-allowed}
+  .help{font-size:12px;color:var(--muted);margin-top:7px}
+  .status{font-size:13px;font-weight:650;color:var(--green);min-height:20px}
+  .entry-grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(240px,.65fr);gap:18px;align-items:start}
+  .pitch-wrap{background:#102619;border:1px solid #536c5c;border-radius:10px;padding:8px;touch-action:manipulation}
+  .pitch{display:block;width:100%;height:auto;cursor:crosshair;touch-action:manipulation}
+  .pitch.zone-pending{cursor:cell}
+  .pitch .mark{pointer-events:none}
+  .entry-instructions{font-weight:700;margin-bottom:10px}
+  .team-direction{display:flex;align-items:center;gap:10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 11px;margin:10px 0}
+  .team-direction input{width:20px;min-height:20px;accent-color:var(--accent)}
+  .team-direction label{margin:0;color:var(--text);font-size:13px}
+  .type-choice{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}
+  .type-choice button.selected{border-color:var(--accent);color:var(--accent);background:#302216}
+  .table-wrap{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:13px;white-space:nowrap}
+  th,td{text-align:left;padding:9px 8px;border-bottom:1px solid var(--border)}
+  th{color:var(--muted);font-size:10px;letter-spacing:.08em;text-transform:uppercase}
+  td:last-child,th:last-child{text-align:right}
+  .empty{color:var(--muted);padding:16px 8px}
+  .small{font-size:11px;color:var(--muted)}
+  @media(max-width:700px){
+    main{padding:18px 12px 40px}
+    .panel{padding:14px}
+    .entry-grid{grid-template-columns:1fr}
+    .entry-grid .pitch-column{order:1}
+    .entry-grid .controls-column{order:0}
+    .panel-head{align-items:flex-start;flex-direction:column}
+  }
+  @media(max-width:420px){.grid{grid-template-columns:1fr}.topline{flex-direction:column}}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="topline">
+      <div>
+        <div class="eyebrow">Offline-first match event capture</div>
+        <h1>Live match logger</h1>
+      </div>
+      <a class="button-link" href="xt_leaderboard.html">Back to xT dashboard</a>
+    </div>
+    <p class="intro">Record the match’s on-ball events from the touchline: passes, carries, shots, duels, defensive and goalkeeper actions, restarts, fouls, cards, and substitutions. Events save locally and export as one CSV.</p>
+  </header>
+
+  <section class="panel" aria-labelledby="match-heading">
+    <div class="panel-head"><h2 id="match-heading">Match setup</h2><span id="saveState" class="status" aria-live="polite">Saved in this browser</span></div>
+    <div class="grid">
+      <div><label for="matchName">Match / competition</label><input id="matchName" placeholder="e.g. County League — Round 4"></div>
+      <div><label for="matchDate">Date</label><input id="matchDate" type="date"></div>
+      <div><label for="homeTeam">Home team</label><input id="homeTeam" placeholder="Home team"></div>
+      <div><label for="awayTeam">Away team</label><input id="awayTeam" placeholder="Away team"></div>
+    </div>
+    <p class="help">Actions are stored on this device in this browser. Export the CSV after the match so you have a backup.</p>
+  </section>
+
+  <section class="panel" aria-labelledby="entry-heading">
+    <div class="panel-head">
+      <h2 id="entry-heading">Log a match event</h2>
+      <div class="actions"><span id="actionCount" class="small">0 actions</span><button id="undoBtn" type="button" disabled>Undo last</button></div>
+    </div>
+    <div class="entry-grid">
+      <div class="pitch-column">
+        <div id="instructions" class="entry-instructions" aria-live="polite">Choose an event and player, then tap its location.</div>
+        <div class="pitch-wrap">
+          <svg id="pitch" class="pitch" viewBox="0 0 120 80" role="application" aria-label="Football pitch. Tap to mark an event location. Passes and carries need a start tap and an end tap.">
+            <rect width="120" height="80" fill="#17432B"></rect>
+            <g fill="none" stroke="rgba(245,248,241,.82)" stroke-width=".35">
+              <rect x=".3" y=".3" width="119.4" height="79.4"></rect>
+              <line x1="60" y1=".3" x2="60" y2="79.7"></line>
+              <circle cx="60" cy="40" r="9.15"></circle>
+              <rect x=".3" y="18" width="18" height="44"></rect>
+              <rect x="101.7" y="18" width="18" height="44"></rect>
+              <rect x=".3" y="30" width="6" height="20"></rect>
+              <rect x="113.7" y="30" width="6" height="20"></rect>
+              <path d="M0 36 L-2 36 L-2 44 L0 44"></path>
+              <path d="M120 36 L122 36 L122 44 L120 44"></path>
+            </g>
+            <g id="marks"></g>
+          </svg>
+        </div>
+        <p class="help">Coordinates are normalized so the team in possession always attacks toward →. After halftime, update the home-team direction.</p>
+      </div>
+      <div class="controls-column">
+        <div class="grid">
+          <div><label for="teamSelect">Team in possession</label><select id="teamSelect"></select></div>
+          <div><label for="playerSelect">Player</label><select id="playerSelect"></select></div>
+          <div><label for="halfSelect">Period</label><select id="halfSelect"><option value="1">First half</option><option value="2">Second half</option><option value="3">Extra time 1</option><option value="4">Extra time 2</option></select></div>
+          <div><label for="minuteInput">Match minute</label><input id="minuteInput" type="number" min="0" max="130" inputmode="numeric" placeholder="e.g. 23"></div>
+        </div>
+        <div class="team-direction">
+          <input id="homeRight" type="checkbox" checked>
+          <label for="homeRight">Home team attacks to the right on the real pitch this half</label>
+        </div>
+        <div><label for="actionSelect">Event type</label>
+          <select id="actionSelect">
+            <optgroup label="On-ball">
+              <option>Pass</option><option>Cross</option><option>Carry</option><option>Dribble / Take-on</option><option>Shot</option>
+              <option>Tackle</option><option>Interception</option><option>Clearance</option>
+              <option>Block</option><option>Pressure</option><option>Ball Recovery</option><option>Miscontrol</option>
+              <option>Dispossessed</option><option>Aerial Duel</option><option>Ground Duel</option><option>Penalty</option>
+            </optgroup>
+            <optgroup label="Goalkeeper">
+              <option>Keeper Save</option><option>Keeper Claim</option><option>Keeper Punch</option>
+              <option>Keeper Distribution</option>
+            </optgroup>
+            <optgroup label="Restarts and match events">
+              <option>Corner</option><option>Free Kick</option><option>Throw-in</option>
+              <option>Goal Kick</option><option>Kick-off</option><option>Ball Out</option>
+              <option>Foul Committed</option><option>Foul Won</option><option>Offside</option>
+              <option>Yellow Card</option><option>Red Card</option><option>Substitution</option>
+              <option>Injury</option><option>Half-time</option><option>Full-time</option>
+            </optgroup>
+          </select>
+        </div>
+        <div class="grid" style="margin-top:10px">
+          <div id="outcomeField"><label for="outcomeSelect">Outcome</label><select id="outcomeSelect"></select></div>
+          <div id="substitutionField" hidden><label for="secondaryPlayer">Player coming on</label><select id="secondaryPlayer"></select></div>
+        </div>
+        <label class="team-direction">
+          <input id="pressureInput" type="checkbox">
+          <span>Under pressure</span>
+        </label>
+        <div class="actions" style="margin-top:12px">
+          <button id="cancelBtn" type="button" disabled>Cancel current</button>
+          <button id="recordNoLocationBtn" type="button" hidden>Record event</button>
+          <button id="exportBtn" type="button" class="primary" disabled>Download CSV</button>
+        </div>
+        <p id="entryStatus" class="help" aria-live="polite">Passes and carries take two taps. Other events take one; substitutions and period markers do not need a pitch location.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="roster-heading">
+    <div class="panel-head"><h2 id="roster-heading">Player roster</h2><span class="small">Add the players you’ll be logging</span></div>
+    <div class="grid">
+      <div><label for="newPlayer">Player name</label><input id="newPlayer" placeholder="Enter player name"></div>
+      <div style="display:flex;align-items:end;gap:8px">
+        <button id="addPlayerBtn" type="button" class="primary" style="width:100%">Add to selected team</button>
+      </div>
+    </div>
+    <p class="help">Select the player involved before logging an event. For substitutions, select the player leaving, then choose the player coming on.</p>
+  </section>
+
+  <section class="panel" aria-labelledby="events-heading">
+    <div class="panel-head">    <h2 id="events-heading">Recent events</h2><button id="newMatchBtn" type="button" class="danger">Start new match</button></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>Min</th><th>Team / player</th><th>Event / outcome</th><th>Location / route</th></tr></thead>
+        <tbody id="eventsBody"></tbody>
+      </table>
+      <div id="emptyState" class="empty">No events yet. Add a player, then tap the pitch to log the first event.</div>
+    </div>
+  </section>
+</main>
+<script>
+const STORAGE_KEY = 'xt-live-match-logger-v1';
+const DEFAULT_STATE = {
+  matchName:'', matchDate:new Date().toISOString().slice(0,10), homeTeam:'Home', awayTeam:'Away',
+  rosters:{Home:[],Away:[]}, events:[], half:1, minute:'', homeAttacksRight:true,
+};
+let state = loadState();
+let pendingStart = null;
+const byId = id => document.getElementById(id);
+const matchInputs = ['matchName','matchDate','homeTeam','awayTeam'];
+const TWO_POINT_ACTIONS = new Set(['Pass','Cross','Carry']);
+const NO_LOCATION_ACTIONS = new Set(['Substitution','Half-time','Full-time']);
+const NO_OUTCOME_ACTIONS = new Set(['Half-time','Full-time']);
+const OUTCOMES = {
+  'Pass':['Complete','Incomplete','Intercepted','Out of play'],
+  'Cross':['Complete','Incomplete','Intercepted','Out of play'],
+  'Carry':['Complete','Lost ball','Foul won'],
+  'Dribble / Take-on':['Beat defender','Stopped','Foul won'],
+  'Shot':['Goal','Own goal','Saved','Off target','Blocked','Post'],
+  'Tackle':['Won','Lost','Foul'],
+  'Interception':['Controlled','Deflected','Missed'],
+  'Clearance':['Successful','Blocked'],
+  'Block':['Blocked','Failed'],
+  'Pressure':['Forced error','No turnover'],
+  'Ball Recovery':['Won','Lost'],
+  'Miscontrol':['Lost ball','Recovered'],
+  'Dispossessed':['Lost ball','Foul won'],
+  'Aerial Duel':['Won','Lost','Foul'],
+  'Ground Duel':['Won','Lost','Foul'],
+  'Keeper Save':['Saved','Rebound','Goal conceded'],
+  'Keeper Claim':['Claimed','Dropped'],
+  'Keeper Punch':['Cleared','Missed'],
+  'Keeper Distribution':['Completed','Turnover'],
+  'Corner':['Attacking team','Defending team'],
+  'Free Kick':['Attacking team','Defending team'],
+  'Throw-in':['In possession','Opponent'],
+  'Goal Kick':['Completed','Turnover'],
+  'Kick-off':['Restart'],
+  'Ball Out':['Throw-in','Corner','Goal kick'],
+  'Foul Committed':['Called','Advantage'],
+  'Foul Won':['Awarded','Advantage'],
+  'Offside':['Flagged'],
+  'Yellow Card':['Shown'],
+  'Red Card':['Shown'],
+  'Substitution':['Substitution'],
+  'Injury':['Play stopped','Play continued'],
+  'Penalty':['Scored','Saved','Missed'],
+};
+
+function loadState(){
+  try{
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if(!saved || typeof saved !== 'object') return structuredClone(DEFAULT_STATE);
+    return {...structuredClone(DEFAULT_STATE), ...saved,
+      rosters:{...DEFAULT_STATE.rosters,...(saved.rosters || {})},
+      events:Array.isArray(saved.events) ? saved.events : []};
+  }catch(error){
+    console.error('Could not restore saved match data:', error);
+    return structuredClone(DEFAULT_STATE);
+  }
+}
+
+function persist(){
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    byId('saveState').textContent = 'Saved in this browser';
+  }catch(error){
+    byId('saveState').textContent = 'Could not save — export a CSV backup';
+    console.error('Could not save match data to this browser:', error);
+  }
+}
+
+function teamNames(){
+  const home = byId('homeTeam').value.trim() || 'Home';
+  const away = byId('awayTeam').value.trim() || 'Away';
+  return {home,away};
+}
+
+function refreshTeams(){
+  const {home,away} = teamNames();
+  const previous = byId('teamSelect').value;
+  byId('teamSelect').innerHTML = [home,away].map(team=>`<option value="${escapeHtml(team)}">${escapeHtml(team)}</option>`).join('');
+  if([home,away].includes(previous)) byId('teamSelect').value = previous;
+  state.rosters[home] = state.rosters[home] || [];
+  state.rosters[away] = state.rosters[away] || [];
+  refreshPlayers();
+}
+
+function refreshPlayers(){
+  const team = byId('teamSelect').value;
+  const roster = state.rosters[team] || [];
+  const previousPlayer = byId('playerSelect').value;
+  const previousSecondary = byId('secondaryPlayer').value;
+  const options = '<option value="">Select player…</option>' +
+    roster.map(name=>`<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('');
+  byId('playerSelect').innerHTML = options;
+  if(roster.includes(previousPlayer)) byId('playerSelect').value=previousPlayer;
+  byId('secondaryPlayer').innerHTML = '<option value="">Select player coming on…</option>' +
+    roster.map(name=>`<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('');
+  if(roster.includes(previousSecondary)) byId('secondaryPlayer').value=previousSecondary;
+}
+
+function escapeHtml(text){
+  return String(text).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+}
+
+function syncSetup(){
+  for(const id of matchInputs) state[id] = byId(id).value;
+  state.half = Number(byId('halfSelect').value);
+  state.minute = byId('minuteInput').value;
+  state.homeAttacksRight = byId('homeRight').checked;
+  refreshTeams();
+  persist();
+}
+
+function drawMarks(){
+  const {home,away} = teamNames();
+  const markers = state.events.filter(event=>Number.isFinite(event.start_x) && Number.isFinite(event.start_y)).slice(-20).map(event=>{
+    const color = event.team === home ? '#62D6A3' : '#FFD166';
+    const mark = TWO_POINT_ACTIONS.has(event.action)
+      ? `<line x1="${event.start_x}" y1="${80-event.start_y}" x2="${event.end_x}" y2="${80-event.end_y}" stroke="${color}" stroke-width=".45" opacity=".8" marker-end="url(#arrow)"/>`
+      : '';
+    return mark+`<circle cx="${event.start_x}" cy="${80-event.start_y}" r=".75" fill="${color}"/>`;
+  }).join('');
+  const start = pendingStart ? `<circle class="mark" cx="${pendingStart.screenX}" cy="${pendingStart.screenY}" r="1.2" fill="#FF9A52" stroke="white" stroke-width=".3"/>` : '';
+  byId('marks').innerHTML = `<defs><marker id="arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L6,3 z" fill="#EDEDE3"/></marker></defs>${markers}${start}`;
+}
+
+function renderEvents(){
+  const body = byId('eventsBody');
+  byId('actionCount').textContent = `${state.events.length} event${state.events.length===1?'':'s'}`;
+  byId('undoBtn').disabled = state.events.length===0;
+  byId('exportBtn').disabled = state.events.length===0;
+  byId('emptyState').hidden = state.events.length>0;
+  body.innerHTML = state.events.slice(-12).reverse().map((event,index)=>{
+    const number = state.events.length - index;
+    const location = Number.isFinite(event.start_x)
+      ? TWO_POINT_ACTIONS.has(event.action)
+        ? `${event.start_x},${event.start_y} → ${event.end_x},${event.end_y}`
+        : `${event.start_x},${event.start_y}`
+      : 'No pitch location';
+    const playerText = [event.player,event.secondary_player && `on: ${event.secondary_player}`].filter(Boolean).join(' · ');
+    return `<tr><td>${number}</td><td>${event.minute ? `${event.minute}′` : '—'}</td>
+      <td>${escapeHtml(event.team || 'Match')}<br><span class="small">${escapeHtml(playerText)}</span></td>
+      <td>${escapeHtml(event.action)} · ${escapeHtml(event.outcome || '')}${event.under_pressure?' · pressure':''}${event.completed===false?' · unsuccessful':''}</td>
+      <td>${location}</td></tr>`;
+  }).join('');
+  drawMarks();
+}
+
+function normalizePoint(x,y,team,attacksRight){
+  const {home} = teamNames();
+  const teamAttacksRight = attacksRight ?? (team === home ? byId('homeRight').checked : !byId('homeRight').checked);
+  return teamAttacksRight ? {x,y} : {x:120-x,y:80-y};
+}
+
+function updateActionControls(){
+  const action = byId('actionSelect').value;
+  const outcomes = OUTCOMES[action] || ['Recorded'];
+  byId('outcomeSelect').innerHTML = outcomes.map(value=>`<option>${escapeHtml(value)}</option>`).join('');
+  byId('outcomeField').hidden = NO_OUTCOME_ACTIONS.has(action);
+  byId('substitutionField').hidden = action !== 'Substitution';
+  byId('recordNoLocationBtn').hidden = !NO_LOCATION_ACTIONS.has(action);
+  byId('pitch').hidden = NO_LOCATION_ACTIONS.has(action);
+  byId('instructions').textContent = NO_LOCATION_ACTIONS.has(action)
+    ? 'This event does not need a pitch location. Use Record event.'
+    : TWO_POINT_ACTIONS.has(action)
+      ? 'Tap where the action starts, then tap where it ends.'
+      : 'Tap the pitch where this event happened.';
+}
+
+function eventContext(){
+  const action = byId('actionSelect').value;
+  const player = NO_OUTCOME_ACTIONS.has(action) ? '' : byId('playerSelect').value;
+  const secondaryPlayer = action === 'Substitution' ? byId('secondaryPlayer').value : '';
+  if(!player && !NO_OUTCOME_ACTIONS.has(action)){
+    byId('entryStatus').textContent = 'Choose the player involved before recording this event.';
+    byId('playerSelect').focus();
+    return null;
+  }
+  if(action === 'Substitution' && (!player || !secondaryPlayer || player === secondaryPlayer)){
+    byId('entryStatus').textContent = 'Choose different players leaving and coming on.';
+    byId('secondaryPlayer').focus();
+    return null;
+  }
+  const outcome = NO_OUTCOME_ACTIONS.has(action) ? '' : byId('outcomeSelect').value;
+  return {
+    match:state.matchName,match_date:state.matchDate,half:Number(byId('halfSelect').value),
+    minute:byId('minuteInput').value ? Number(byId('minuteInput').value) : '',
+    team:NO_OUTCOME_ACTIONS.has(action) ? '' : byId('teamSelect').value,
+    player,secondary_player:secondaryPlayer,action,outcome,
+    is_carry:action==='Carry',under_pressure:byId('pressureInput').checked,
+    completed:!['Incomplete','Intercepted','Out of play','Lost ball','Lost','Missed','Blocked','Turnover','Dropped','Goal conceded','Stopped'].includes(outcome),
+  };
+}
+
+function saveEvent(context,start,end){
+  state.events.push({
+    ...context,
+    start_x:start ? roundCoord(start.x) : '',
+    start_y:start ? roundCoord(start.y) : '',
+    end_x:end ? roundCoord(end.x) : '',
+    end_y:end ? roundCoord(end.y) : '',
+  });
+  persist();
+  renderEvents();
+  byId('entryStatus').textContent = `${context.action}${context.outcome ? ` · ${context.outcome}` : ''} recorded.`;
+}
+
+function handlePitchTap(event){
+  const svgPoint = byId('pitch').createSVGPoint();
+  svgPoint.x = event.clientX;
+  svgPoint.y = event.clientY;
+  const point = svgPoint.matrixTransform(byId('pitch').getScreenCTM().inverse());
+  const physicalX = Math.max(0,Math.min(120,point.x));
+  const physicalY = Math.max(0,Math.min(80,80-point.y));
+  const action = pendingStart ? pendingStart.action : byId('actionSelect').value;
+  const context = pendingStart || eventContext();
+  if(!context) return;
+  const {home} = teamNames();
+  const attacksRight = context.team === home ? byId('homeRight').checked : !byId('homeRight').checked;
+  const normalized = normalizePoint(physicalX,physicalY,context.team,attacksRight);
+
+  if(TWO_POINT_ACTIONS.has(action) && !pendingStart){
+    pendingStart = {...context,...normalized,screenX:physicalX,screenY:80-physicalY,attacksRight};
+    byId('instructions').textContent = 'Now tap where the action ends. Player, type, outcome, and team are fixed.';
+    byId('cancelBtn').disabled = false;
+    byId('pitch').classList.add('zone-pending');
+    byId('entryStatus').textContent = 'Start marked. Tap the destination to save this event.';
+    drawMarks();
+    return;
+  }
+
+  if(!TWO_POINT_ACTIONS.has(action)){
+    saveEvent(context,normalized,normalized);
+    return;
+  }
+
+  const completedAction = pendingStart;
+  const end = normalizePoint(physicalX,physicalY,completedAction.team,completedAction.attacksRight);
+  pendingStart = null;
+  byId('cancelBtn').disabled = true;
+  byId('pitch').classList.remove('zone-pending');
+  saveEvent(completedAction,completedAction,end);
+  byId('instructions').textContent = 'Event saved. Tap the pitch for the next event.';
+}
+
+function roundCoord(value){return Math.round(value*10)/10;}
+
+function csvCell(value){
+  const text = String(value ?? '');
+  return `"${text.replace(/"/g,'""')}"`;
+}
+
+function exportCsv(){
+  const columns = ['match','match_date','half','minute','team','player','secondary_player','action','outcome','start_x','start_y','end_x','end_y','is_carry','under_pressure','completed'];
+  const lines = [columns.join(',')];
+  for(const event of state.events) lines.push(columns.map(column=>csvCell(
+    typeof event[column]==='boolean' ? String(event[column]) : event[column]
+  )).join(','));
+  const blob = new Blob(['\uFEFF'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  const safeName = (state.matchName || 'local-match').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'') || 'local-match';
+  link.href = url;
+  link.download = `${safeName}-actions.csv`;
+  link.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+for(const id of matchInputs){
+  byId(id).value = state[id] || '';
+  byId(id).addEventListener('change',syncSetup);
+  byId(id).addEventListener('input',()=>{
+    state[id]=byId(id).value;
+    if(id==='homeTeam' || id==='awayTeam') refreshTeams();
+    persist();
+  });
+}
+byId('halfSelect').value = String(state.half);
+byId('minuteInput').value = state.minute;
+byId('homeRight').checked = state.homeAttacksRight;
+byId('halfSelect').addEventListener('change',syncSetup);
+byId('minuteInput').addEventListener('change',syncSetup);
+byId('homeRight').addEventListener('change',syncSetup);
+byId('teamSelect').addEventListener('change',refreshPlayers);
+refreshTeams();
+byId('actionSelect').addEventListener('change',()=>{
+  if(pendingStart){
+    pendingStart=null;
+    byId('cancelBtn').disabled=true;
+    byId('pitch').classList.remove('zone-pending');
+    byId('entryStatus').textContent='Action type changed; the unfinished event was cancelled.';
+  }
+  updateActionControls();
+  drawMarks();
+});
+updateActionControls();
+byId('pitch').addEventListener('pointerup',handlePitchTap);
+byId('recordNoLocationBtn').addEventListener('click',()=>{
+  const context=eventContext();
+  if(context) saveEvent(context,null,null);
+});
+byId('addPlayerBtn').addEventListener('click',()=>{
+  const name = byId('newPlayer').value.trim();
+  const team = byId('teamSelect').value;
+  if(!name) return byId('newPlayer').focus();
+  state.rosters[team] = state.rosters[team] || [];
+  if(!state.rosters[team].includes(name)) state.rosters[team].push(name);
+  byId('newPlayer').value='';
+  refreshPlayers();
+  byId('playerSelect').value=name;
+  persist();
+});
+byId('newPlayer').addEventListener('keydown',event=>{
+  if(event.key==='Enter'){event.preventDefault();byId('addPlayerBtn').click();}
+});
+byId('cancelBtn').addEventListener('click',()=>{
+  pendingStart=null;
+  byId('cancelBtn').disabled=true;
+  byId('pitch').classList.remove('zone-pending');
+  updateActionControls();
+  byId('entryStatus').textContent='Current action cancelled.';
+  drawMarks();
+});
+byId('undoBtn').addEventListener('click',()=>{
+  state.events.pop();
+  persist();
+  renderEvents();
+  byId('entryStatus').textContent='Last action removed.';
+});
+byId('exportBtn').addEventListener('click',exportCsv);
+byId('newMatchBtn').addEventListener('click',()=>{
+  if(!confirm('Start a new match? This clears the current match and roster from this browser. Download the CSV first if you need it.')) return;
+  localStorage.removeItem(STORAGE_KEY);
+  state=structuredClone(DEFAULT_STATE);
+  for(const id of matchInputs) byId(id).value=state[id];
+  byId('halfSelect').value='1';
+  byId('minuteInput').value='';
+  byId('homeRight').checked=true;
+  byId('pressureInput').checked=false;
+  byId('actionSelect').value='Pass';
+  updateActionControls();
+  pendingStart=null;
+  refreshTeams();
+  renderEvents();
+  persist();
+});
+renderEvents();
+</script>
+</body>
+</html>
