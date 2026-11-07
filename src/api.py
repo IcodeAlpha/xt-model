@@ -192,6 +192,31 @@ def _score_deep(row):
     return prob
 
 
+def _parse_bool_column(series, column_name):
+    """Parse common CSV boolean forms without treating the string "False" as true."""
+    truthy = {"true", "1", "yes", "y"}
+    falsy = {"false", "0", "no", "n", ""}
+
+    def parse(value):
+        if pd.isna(value):
+            return False
+        if isinstance(value, (bool, np.bool_)):
+            return bool(value)
+        if isinstance(value, (int, float, np.integer, np.floating)) and value in (0, 1):
+            return bool(value)
+        normalized = str(value).strip().lower()
+        if normalized in truthy:
+            return True
+        if normalized in falsy:
+            return False
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid boolean value in '{column_name}': {value!r}. Use true/false or 1/0.",
+        )
+
+    return series.map(parse)
+
+
 @app.post("/predict/xt", response_model=XTResponse, tags=["xT"])
 def predict_xt(action: PassInput):
     """Score a pass or carry: returns the threat added (xT delta) by both
@@ -362,12 +387,13 @@ def players_dribbles():
 
 
 # ---------------------------------------------------------------------------
-# Score a CSV of actions from ANY match/competition, not just World Cup 2022.
+# Score completed passes/crosses/carries from a CSV of actions from ANY match/competition,
+# including a full match event log produced by live_match_logger.html.
 #
 # Expected CSV columns:
 #   required: start_x, start_y, end_x, end_y
-#   optional: player, team, is_carry (true/false), under_pressure (true/false),
-#             minutes_played (per player, used for per-90 if provided)
+#   optional: action (Pass, Cross, Carry), completed, player, team, is_carry (true/false),
+#             under_pressure (true/false), minutes_played (per player, for per-90)
 #
 # This is what "run the model on different data" means in practice: export
 # actions in this shape (e.g. from build_dataset.py's actions.parquet on a
@@ -375,9 +401,11 @@ def players_dribbles():
 # ---------------------------------------------------------------------------
 @app.post("/rank/csv", tags=["players"])
 async def rank_from_csv(file: UploadFile = File(...)):
-    """Upload a CSV of pass/carry actions and get back a player-level xT
-    ranking, scored live by the LightGBM model (chosen over the deep model
-    here because its raw probabilities are well-calibrated -- see README)."""
+    """Upload action rows and rank players using completed passes, crosses and carries.
+
+    Full event logs may include other action types and unsuccessful moves;
+    those rows are retained by the logger but excluded from xT scoring.
+    """
     if _lgbm_model is None:
         raise HTTPException(status_code=503, detail="LightGBM model not loaded.")
 
@@ -393,8 +421,25 @@ async def rank_from_csv(file: UploadFile = File(...)):
         raise HTTPException(status_code=400,
                              detail=f"CSV is missing required columns: {sorted(missing)}")
 
-    df["is_carry"] = df["is_carry"].astype(bool) if "is_carry" in df.columns else False
-    df["under_pressure"] = df["under_pressure"].astype(bool) if "under_pressure" in df.columns else False
+    if "action" in df.columns:
+        action_types = df["action"].astype("string").str.strip().str.lower()
+        completed = (
+            _parse_bool_column(df["completed"], "completed")
+            if "completed" in df.columns else pd.Series(True, index=df.index)
+        )
+        df = df.loc[action_types.isin({"pass", "cross", "carry"}) & completed].copy()
+        if df.empty:
+            raise HTTPException(
+                status_code=400,
+                detail="CSV contains no completed passes, crosses or carries to score.",
+            )
+        df["is_carry"] = action_types.loc[df.index].eq("carry")
+    else:
+        df["is_carry"] = _parse_bool_column(df["is_carry"], "is_carry") if "is_carry" in df.columns else False
+    df["under_pressure"] = (
+        _parse_bool_column(df["under_pressure"], "under_pressure")
+        if "under_pressure" in df.columns else False
+    )
     df["player"] = df["player"] if "player" in df.columns else "Unknown"
     df["team"] = df["team"] if "team" in df.columns else "Unknown"
 
