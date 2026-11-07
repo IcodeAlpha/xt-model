@@ -214,6 +214,27 @@
   .legend-dot{width:9px; height:9px; border-radius:50%;}
   canvas{max-width:100%;}
 
+  /* ---------- xT PITCH MODEL ---------- */
+  .pitch-panel{
+    border:1px solid var(--border); border-radius:14px; background:var(--surface);
+    padding:24px; margin-bottom:8px;
+  }
+  .pitch-svg{display:block; width:100%; max-height:560px; margin:0 auto;}
+  .pitch-zone{cursor:help; transition:fill-opacity .15s ease;}
+  .pitch-zone:hover{fill-opacity:1;}
+  .pitch-legend{display:flex; align-items:center; gap:12px; margin-top:18px; flex-wrap:wrap;}
+  .pitch-gradient{width:min(220px, 42vw); height:9px; border-radius:6px; background:linear-gradient(90deg,#14251D,#FF7A3D,#FFCF5C);}
+  .pitch-legend-label{font:11px 'JetBrains Mono',monospace; color:var(--muted);}
+  .pitch-explainer{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:22px;}
+  .pitch-explainer-card{border:1px solid var(--border); border-radius:10px; padding:14px; background:var(--surface-2);}
+  .pitch-explainer-label{font:10px 'JetBrains Mono',monospace; letter-spacing:0.08em; text-transform:uppercase; color:var(--muted-2);}
+  .pitch-explainer-text{font-size:12.5px; line-height:1.6; color:var(--muted); margin-top:6px;}
+  .pitch-explainer-text b{color:var(--text); font-weight:600;}
+  .pitch-formula{font:12px 'JetBrains Mono',monospace; color:var(--heat-2); overflow-wrap:anywhere;}
+  .pitch-readout{margin-top:14px; min-height:20px; font:12px 'JetBrains Mono',monospace; color:var(--text);}
+  .pitch-note{font-size:11.5px; color:var(--muted-2); margin-top:12px; line-height:1.6;}
+  @media (max-width:640px){.pitch-panel{padding:16px;}.pitch-explainer{grid-template-columns:1fr;}}
+
   /* ---------- FOOTNOTE ---------- */
   .footnote{
     max-width:1180px; margin:56px auto 0; padding:24px 32px;
@@ -294,10 +315,11 @@
 <div class="section">
   <div class="section-head">
     <div class="section-title">Run it on your own data</div>
-    <div class="section-note">Upload a CSV of actions from any match — see the schema below.</div>
+    <div class="section-note">Log all match events live. The xT upload scores only completed passes, crosses and carries.</div>
   </div>
   <div class="upload-panel">
     <div class="upload-left">
+      <a class="upload-btn" href="live_match_logger.html">Open live match logger</a>
       <input type="file" id="csvInput" accept=".csv" style="display:none">
       <button id="uploadBtn" class="upload-btn">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -310,7 +332,7 @@
       <div class="schema-title">Required columns</div>
       <code class="mono">start_x, start_y, end_x, end_y</code>
       <div class="schema-title" style="margin-top:10px;">Optional</div>
-      <code class="mono">player, team, is_carry, under_pressure, minutes_played</code>
+      <code class="mono">player, team, action, completed, is_carry, under_pressure</code>
     </div>
   </div>
   <div id="uploadStatus" class="upload-status"></div>
@@ -348,6 +370,57 @@
       <div>#</div><div>Player</div><div>Threat</div><div style="text-align:right">Value</div>
     </div>
     <div id="boardBody"></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-head">
+    <div class="section-title">How location changes scoring threat</div>
+    <div class="section-note">A pitch map of the model's estimated scoring probability—not a player heatmap.</div>
+  </div>
+  <div class="pitch-panel">
+    <svg id="xtPitch" class="pitch-svg" viewBox="-3 -3 126 86" role="img"
+         aria-label="Expected threat heatmap on a football pitch, attacking from left to right">
+      <rect x="0" y="0" width="120" height="80" fill="#123421"></rect>
+      <g id="xtPitchZones"></g>
+      <g fill="none" stroke="rgba(237,237,227,0.78)" stroke-width="0.35">
+        <rect x="0" y="0" width="120" height="80"></rect>
+        <line x1="60" y1="0" x2="60" y2="80"></line>
+        <circle cx="60" cy="40" r="9.15"></circle>
+        <rect x="0" y="18" width="18" height="44"></rect>
+        <rect x="102" y="18" width="18" height="44"></rect>
+        <rect x="0" y="30" width="6" height="20"></rect>
+        <rect x="114" y="30" width="6" height="20"></rect>
+        <circle cx="12" cy="40" r="0.45" fill="rgba(237,237,227,0.78)" stroke="none"></circle>
+        <circle cx="108" cy="40" r="0.45" fill="rgba(237,237,227,0.78)" stroke="none"></circle>
+        <circle cx="60" cy="40" r="0.45" fill="rgba(237,237,227,0.78)" stroke="none"></circle>
+        <path d="M0 36 L-2 36 L-2 44 L0 44"></path>
+        <path d="M120 36 L122 36 L122 44 L120 44"></path>
+      </g>
+    </svg>
+    <div class="pitch-legend">
+      <span class="pitch-legend-label">Lower estimate</span>
+      <span class="pitch-gradient" aria-hidden="true"></span>
+      <span class="pitch-legend-label">Higher estimate</span>
+      <span class="pitch-legend-label">Attack →</span>
+    </div>
+    <div id="xtPitchReadout" class="pitch-readout" aria-live="polite">Hover over or focus a zone to see its estimate.</div>
+    <div class="pitch-explainer">
+      <div class="pitch-explainer-card">
+        <div class="pitch-explainer-label">What one square means</div>
+        <div class="pitch-explainer-text">The model's estimated chance that a possession ends in a goal when a completed pass ends in that location. <b>It is not the chance of scoring from a shot there.</b></div>
+      </div>
+      <div class="pitch-explainer-card">
+        <div class="pitch-explainer-label">How to read the colors</div>
+        <div class="pitch-explainer-text">Darker green means a lower estimate; orange and yellow mean higher. The colors stretch the middle 90% of estimates to make differences visible; hover values are the actual model estimates.</div>
+      </div>
+      <div class="pitch-explainer-card">
+        <div class="pitch-explainer-label">What xT added means</div>
+        <div class="pitch-explainer-text pitch-formula">xT added = estimate at end − estimate at start</div>
+        <div class="pitch-explainer-text">For example, moving from a 2% zone to a 4% zone adds about <b>2 percentage points</b> of estimated scoring chance. Player totals sum these action-by-action changes.</div>
+      </div>
+    </div>
+    <div class="pitch-note">This map holds the action context constant (completed, unpressured pass) and varies only its end location. It explains the location signal used by the rankings; each action's xT also depends on its start location and context.</div>
   </div>
 </div>
 
@@ -1290,6 +1363,61 @@ document.querySelectorAll('.toggle-btn').forEach(btn=>{
 });
 searchInput.addEventListener('input', render);
 render();
+
+// ---------- LightGBM expected-threat surface at 16x12 zone centers ----------
+const XT_GRID = [
+  [0.01999,0.01999,0.01999,0.01983,0.01960,0.01960,0.01960,0.01960,0.01960,0.01960,0.01948,0.01948],
+  [0.01999,0.01999,0.01999,0.01983,0.01960,0.01960,0.01960,0.01960,0.01960,0.01960,0.01948,0.01948],
+  [0.01988,0.01988,0.01988,0.01972,0.01949,0.01949,0.01949,0.01949,0.01949,0.01949,0.01938,0.01938],
+  [0.01988,0.01988,0.01988,0.01972,0.01949,0.01949,0.01949,0.01949,0.01949,0.01949,0.01938,0.01938],
+  [0.01988,0.01988,0.01988,0.01972,0.01949,0.01949,0.01949,0.01949,0.01949,0.01949,0.01938,0.01938],
+  [0.01988,0.01988,0.01988,0.01972,0.01949,0.01949,0.01949,0.01949,0.01949,0.01949,0.01938,0.01938],
+  [0.01988,0.01988,0.01988,0.01972,0.01949,0.01969,0.01969,0.01949,0.01949,0.01949,0.01938,0.01938],
+  [0.01988,0.01988,0.01988,0.01994,0.02035,0.02035,0.02035,0.02035,0.01979,0.01949,0.01938,0.01938],
+  [0.02013,0.02053,0.02076,0.02130,0.02166,0.02166,0.02166,0.02166,0.02130,0.02076,0.02033,0.01977],
+  [0.02064,0.02087,0.02141,0.02183,0.02183,0.02183,0.02183,0.02183,0.02183,0.02141,0.02075,0.02043],
+  [0.02064,0.02103,0.02183,0.02236,0.02328,0.02368,0.02368,0.02328,0.02236,0.02183,0.02091,0.02043],
+  [0.02090,0.02141,0.02236,0.02405,0.02468,0.02468,0.02522,0.02522,0.02379,0.02236,0.02129,0.02069],
+  [0.02105,0.02123,0.02283,0.02531,0.02678,0.02678,0.02737,0.02737,0.02559,0.02283,0.02193,0.02084],
+  [0.02098,0.02110,0.02268,0.02551,0.03729,0.04026,0.04113,0.03810,0.02541,0.02268,0.02180,0.02158],
+  [0.02098,0.02128,0.02267,0.02800,0.04218,0.04359,0.04359,0.04218,0.02770,0.02234,0.02189,0.02158],
+  [0.02098,0.02092,0.02178,0.02323,0.03703,0.04359,0.04359,0.03703,0.02313,0.02137,0.02152,0.02158],
+];
+const pitchValues = XT_GRID.flat().sort((a,b)=>a-b);
+const pitchLow = pitchValues[Math.floor((pitchValues.length - 1) * 0.05)];
+const pitchHigh = pitchValues[Math.floor((pitchValues.length - 1) * 0.95)];
+const pitchZones = document.getElementById('xtPitchZones');
+const pitchReadout = document.getElementById('xtPitchReadout');
+const pitchCellWidth = 120 / XT_GRID.length;
+const pitchCellHeight = 80 / XT_GRID[0].length;
+
+function pitchColor(value){
+  const t = Math.max(0, Math.min(1, (value - pitchLow) / (pitchHigh - pitchLow)));
+  const stops = [[20,37,29],[255,122,61],[255,207,92]];
+  const segment = t < 0.58 ? t / 0.58 : (t - 0.58) / 0.42;
+  const from = t < 0.58 ? stops[0] : stops[1];
+  const to = t < 0.58 ? stops[1] : stops[2];
+  return `rgb(${from.map((channel,i)=>Math.round(channel+(to[i]-channel)*segment)).join(',')})`;
+}
+
+pitchZones.innerHTML = XT_GRID.map((xRow,x)=>xRow.map((value,y)=>{
+  const xPos = x * pitchCellWidth;
+  const yPos = 80 - (y + 1) * pitchCellHeight;
+  return `<rect class="pitch-zone" x="${xPos}" y="${yPos}" width="${pitchCellWidth}" height="${pitchCellHeight}"
+    fill="${pitchColor(value)}" fill-opacity="0.88" stroke="rgba(10,16,13,0.22)" stroke-width="0.18"
+    aria-label="Zone ${x+1}, ${y+1}: estimated scoring probability ${(value*100).toFixed(2)} percent" tabindex="0"
+    data-x="${x+1}" data-y="${y+1}" data-value="${value}">
+    <title>Estimated scoring probability: ${(value*100).toFixed(2)}%</title>
+  </rect>`;
+}).join('')).join('');
+pitchZones.addEventListener('pointerover', event=>{
+  const zone = event.target.closest('.pitch-zone');
+  if(zone) pitchReadout.textContent = `Zone ${zone.dataset.x} of 16 across the pitch · ${zone.dataset.value * 100}% estimated scoring probability`;
+});
+pitchZones.addEventListener('focusin', event=>{
+  const zone = event.target.closest('.pitch-zone');
+  if(zone) pitchReadout.textContent = `Zone ${zone.dataset.x} of 16 across the pitch · ${Number(zone.dataset.value * 100).toFixed(2)}% estimated scoring probability`;
+});
 
 // ---------- Scatter: per-90 vs minutes (the small-sample-size story) ----------
 const ctx = document.getElementById('scatterChart').getContext('2d');
