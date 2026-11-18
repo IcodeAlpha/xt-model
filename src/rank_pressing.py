@@ -9,6 +9,11 @@ import pandas as pd
 
 PROCESSED_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "processed")
 
+# Players with fewer pressures than this are too noisy to rank (a handful of lucky regains
+# in one match can top the list). The CSV keeps everyone; only the printed top-20 and the
+# dashboard apply this cutoff, matching how aerials/dribbles/press-resistance work.
+MIN_PRESSURES = 30
+
 
 def build_rankings():
     df = pd.read_parquet(os.path.join(PROCESSED_DIR, "pressures_scored.parquet"))
@@ -42,10 +47,16 @@ def build_rankings():
     return tournament
 
 
-if __name__ == "__main__":
-    tournament = build_rankings()
-    print(f"\n=== Top 20 by pressing value added (actual regains - expected) ===")
-    print(tournament.sort_values("pressing_value_added", ascending=False).head(20)
+def print_top(tournament, n=20):
+    qualified = tournament[tournament["pressures"] >= MIN_PRESSURES]
+    print(f"\n=== Top {n} by pressing value added (actual regains - expected), "
+          f"min {MIN_PRESSURES} pressures ({len(qualified)}/{len(tournament)} qualify) ===")
+    print(qualified.sort_values("pressing_value_added", ascending=False).head(n)
           [["player", "team", "pressing_value_added", "pressures", "actual_regains",
             "expected_regains", "matches_played"]]
           .to_string(index=False))
+
+
+if __name__ == "__main__":
+    tournament = build_rankings()
+    print_top(tournament)

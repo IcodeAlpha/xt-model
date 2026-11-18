@@ -57,6 +57,7 @@ STEPS = [
     ("rank_dribbles",             "rank_dribbles.py",             [f"{DATA}/player_dribble_tournament.csv"],      False),
     ("rank_players",              "rank_players.py",              [f"{DATA}/player_xt_tournament.csv"],           False),
     ("rank_progressive",          "rank_progressive.py",          [f"{DATA}/player_progressive.csv"],             False),
+    ("bootstrap_rankings",        "bootstrap_rankings.py",        [f"{DATA}/player_xt_tournament_ci.csv"],        False),
     # Optional: heavier / require torch / not needed for the API or leaderboard,
     # only run with --with-optional and only if the script is actually present
     # (these were built in earlier phases and may not be in every checkout).
