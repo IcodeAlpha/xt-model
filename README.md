@@ -1,116 +1,146 @@
-# Expected Threat (xT): Classical ML vs. Deep Learning on Real Match Data
+# Expected Threat (xT): Possession Value and Player Rankings from Real Match Data
 
-A from-scratch implementation of **possession-value modeling** in football analytics —
-the same family of model used by clubs and analytics vendors to answer "how much did
-that pass actually help create a goal-scoring opportunity?"
+A from-scratch implementation of **possession-value modeling** in football analytics,
+extended into a full player-evaluation toolkit. The core question: *how much did that
+pass, carry, tackle or corner actually help (or stop) a goal-scoring chance?*
 
-Two models are trained and evaluated head-to-head on identical cross-validation folds:
+Everything is built on real professional data from **[StatsBomb Open Data](https://github.com/statsbomb/open-data)**
+(free, no API key): the complete **FIFA World Cup 2022**, all 64 matches, event by event.
 
-1. **LightGBM** (gradient-boosted trees) — the classical, industry-standard approach
-2. **A small PyTorch MLP** — a deep learning approach, trained on the same features
+The project has three layers:
 
-## Data
+1. **Core xT models**: LightGBM vs. a PyTorch MLP, plus a classic grid-based xT, a multi-task model and a sequence (LSTM) model.
+2. **Player metrics**: threat added, progressive actions, expected assists, defensive value, set pieces, pressing, press resistance, aerials and dribbles.
+3. **Delivery**: a FastAPI service and a browser leaderboard dashboard.
 
-Real professional match data from **[StatsBomb Open Data](https://github.com/statsbomb/open-data)**
-(free, no API key required). This project uses the complete **FIFA World Cup 2022** —
-all 64 matches, event-by-event.
+## Core idea
 
-- 122,279 completed passes and carries extracted from raw event streams
-- Every action labeled with whether the possession it belongs to ended in a goal
-- Base rate: ~1.9% of possessions end in a goal — a genuinely hard, imbalanced problem
+For every pass/carry we know the start location, end location, and whether the possession
+it belonged to ended in a goal. We train a classifier to predict
+`P(goal | where this action ended, action type, pressure)`.
 
-## Method
+The **value of an action** is the model's probability at the end location minus its
+probability at the start location (the Karun Singh xT formulation), applied per action
+rather than on a coarse grid.
 
-For every pass/carry we know the start location, end location, and whether that
-possession eventually produced a goal. We train a classifier to predict:
+### Why match-level cross-validation
 
-```
-P(goal | this action's end location, action type, pressure, completion)
-```
+A single pass is usually several actions removed from any shot, so the signal is weak and
+noisy. Splitting rows randomly would leak information between actions of the same match and
+inflate AUC. All evaluation here splits **by `match_id`**.
 
-The **value of an action** is then the model's probability at the end location minus
-its probability at the start location — the classic Karun Singh xT formulation,
-applied here at the individual-action level rather than a discretized 12x8 grid.
-
-### Why this is genuinely hard (and why that matters)
-
-A single pass is usually several actions removed from any shot. Predicting "will this
-possession score" from one action's coordinates is a weak, noisy signal by nature —
-which is exactly why match-level cross-validation (not a random row-level split) is
-used throughout. A row-level split leaks information between actions in the same
-possession/match and produces badly inflated, meaningless AUC scores. Splitting by
-match_id is the only honest way to evaluate this.
-
-## Results (5-fold match-level cross-validation)
+## Core model results (5-fold match-level CV)
 
 | Model | CV AUC | Held-out test AUC |
 |---|---|---|
 | LightGBM (baseline) | 0.602 ± 0.035 | 0.559 |
-| PyTorch MLP (deep learning) | **0.618 ± 0.038** | 0.559 |
+| PyTorch MLP | 0.618 ± 0.038 | 0.559 |
 
-Both models land in the range reported by published possession-value models on
-similar-sized datasets. The neural net edges out the tree-based baseline on average,
-though the gap is within the fold-to-fold variance — with only 64 matches, that's an
-honest result, not a case for over-claiming "deep learning wins."
+The gap is within fold-to-fold variance; with 64 matches this is not evidence that deep
+learning wins. Note that the MLP picks its best epoch using the evaluation fold's AUC, which
+slightly flatters its CV number.
 
-## Figures
+Other core models:
 
-- `figures/xt_surface_comparison.png` — the learned pitch-value surface for both
-  models side by side. Both correctly learn that value rises sharply near the
-  opponent's goal and the middle channel, without ever being told the rules of football.
-- `figures/pass_value_map_3869685.png` — every completed pass from the **2022 World
-  Cup Final (Argentina 3–3 France)**, colored by threat added. The single highest-value
-  pass found (Griezmann, 67th minute) is a line-breaking ball from deep in France's own
-  half out to the edge of Argentina's box — a sanity check that the model is picking up
-  real tactical signal, not noise.
+- `train_xt_grid.py`: classic 16x12 Markov xT (open play only), solved by value iteration. No ML.
+- `train_gamestate.py`: adds score difference and minutes remaining to test whether game state changes a pass's value.
+- `train_multitask.py`: one network with a shared pitch-geometry trunk and two heads (xT and xG).
+- `train_sequence.py`: an LSTM over the last 6 actions of a possession.
+
+## Player metrics
+
+Most metrics use the same recipe: **actual minus expected**, so players are credited for
+beating what an average player would do in the same situation.
+
+| Metric | Script(s) | What it measures |
+|---|---|---|
+| Threat added (xT) | `rank_players.py` | Sum of xT over every completed pass/carry, total and per 90 |
+| Progressive actions | `rank_progressive.py` | Passes/carries closing >=25% of distance to goal or ending in the box (rule-based, model-free) |
+| Expected assists (xA) | `train_xg.py`, `build_xa.py` | Quality of the shots a player's passes create, via a trained xG model |
+| Defensive value | `build_defensive.py` | Danger denied by successful tackles, interceptions, blocks, clearances, recoveries |
+| Set pieces | `build_setpieces.py`, `train_setpiece.py`, `rank_setpieces.py` | Corner and attacking free-kick delivery quality |
+| Pressing | `build_pressure.py`, `train_pressure.py`, `rank_pressing.py` | Regains within 5 s of a press, minus expected |
+| Press resistance | `train_completion.py`, `rank_press_resistance.py` | Pass completion under pressure, minus expected |
+| Aerials | `build_aerials.py`, `train_aerial.py`, `rank_aerials.py` | Aerial duel wins minus expected (winners recovered via related events) |
+| Dribbles | `build_dribbles.py`, `train_dribble.py`, `rank_dribbles.py` | Take-on completions minus expected |
+
+Per-90 figures use minutes computed from lineups and substitutions (`build_player_minutes.py`).
 
 ## Project structure
 
 ```
 src/
-  download_data.py    # pulls raw StatsBomb event JSON for a competition/season
-  build_dataset.py    # parses events into action-level rows with possession/goal labels
-  features.py         # feature engineering + match-level train/val/test split
-  train_baseline.py   # LightGBM model + 5-fold CV
-  train_deep.py        # PyTorch MLP model + 5-fold CV (same protocol as baseline)
-  visualize.py         # pitch-value heatmaps and match pass-value overlays
-models/                # trained model artifacts
-figures/               # rendered PNGs
-data/processed/        # actions.parquet -- the action-level dataset used for training
+  download_data.py        # pulls raw StatsBomb event JSON
+  build_dataset.py        # action-level rows (passes/carries) with goal labels
+  features.py             # geometry features + match-level splits
+  build_player_minutes.py # minutes per player per match
+  build_shots_dataset.py  # shots table for xG
+  train_baseline.py       # LightGBM xT + CV
+  train_deep.py           # PyTorch MLP xT + CV
+  train_xt_grid.py        # classic 16x12 grid xT
+  train_gamestate.py      # xT with score/time context
+  train_multitask.py      # joint xT + xG network
+  train_sequence.py       # LSTM over possession sequences
+  train_xg.py, build_xa.py
+  build_defensive.py
+  build_setpieces.py, train_setpiece.py, rank_setpieces.py
+  build_pressure.py, train_pressure.py, rank_pressing.py
+  train_completion.py, rank_press_resistance.py
+  build_aerials.py, train_aerial.py, rank_aerials.py
+  build_dribbles.py, train_dribble.py, rank_dribbles.py
+  rank_players.py, rank_progressive.py
+  visualize.py            # pitch heatmaps and match pass maps
+  api.py                  # FastAPI service
+  xt_leaderboard.html     # browser dashboard (talks to the API)
+  run_all.py              # runs the whole pipeline in dependency order
+models/                   # trained model artifacts
+figures/                  # rendered PNGs
+data/raw/                 # StatsBomb JSON (downloaded)
+data/processed/           # parquet tables and per-player CSV rankings
 ```
-
-## Logging local matches
-
-Open `src/live_match_logger.html` on a phone, tablet, or laptop to manually capture a match without recording video. Set the teams and match details, add player names, then select an event type and tap its location on the pitch. Passes, crosses, and carries use a start tap followed by an end tap; other location-based events use one tap. Substitutions and half-/full-time markers do not need a location.
-
-The logger records outcomes and unsuccessful actions as well as successful ones. Coordinates are normalized so the team in possession attacks from left to right; update the home-team direction setting when the teams switch ends. Events are saved in that browser's local storage, so download the CSV after the match as a backup. This is a manual event log, not continuous off-ball player tracking.
-
-To score the completed passes, crosses, and carries, run `uvicorn api:app --reload` from `src/`, open `src/xt_leaderboard.html`, and upload the exported match CSV. Other event types remain in the file but are excluded from xT scoring. The existing model was trained on World Cup 2022 data, so treat local-league scores as exploratory until you have enough local matches to train and validate a local model.
 
 ## Reproducing this
 
 ```bash
-pip install lightgbm torch pandas numpy matplotlib scikit-learn tqdm requests pyarrow
+pip install lightgbm torch pandas numpy matplotlib scikit-learn tqdm requests pyarrow fastapi uvicorn python-multipart
 
 cd src
-python download_data.py     # ~190MB, all 64 World Cup 2022 matches
-python build_dataset.py     # builds data/processed/actions.parquet
-python train_baseline.py    # LightGBM + CV
-python train_deep.py        # PyTorch MLP + CV
-python visualize.py         # renders figures/
+python run_all.py                   # everything except optional heavy steps; skips finished steps
+python run_all.py --with-optional   # also deep model, multi-task, sequence model, figures
+python run_all.py --list            # show steps in order
+python run_all.py --only build_xa   # run one step
+python run_all.py --force           # rerun everything
 ```
 
-Swap the competition/season IDs in `download_data.py` to run this on any other
-competition in StatsBomb's open data catalog (e.g. Euro 2020, Champions League seasons,
-FA Women's Super League).
+`download_data.py` fetches ~190 MB. Swap the competition/season IDs in it to run on any
+other StatsBomb open competition (Euro 2020, Champions League seasons, FA WSL, ...).
 
-## Natural extensions
+## API and dashboard
 
-- **Add tracking data** (if available) to model off-ball positioning and pressure
-  properly, instead of using StatsBomb's "under_pressure" flag as a proxy
-- **Sequence modeling**: feed the last N actions of a possession into a small
-  transformer instead of scoring actions independently — captures momentum/buildup
-- **Player-level aggregation**: sum xT-added per 90 minutes to rank players on
-  progressive/creative contribution, independent of goals and assists
-- **Shots/xG as a second head**: multi-task training with shot-conversion probability
-  alongside possession-value, sharing the pitch-location representation
+```bash
+cd src
+uvicorn api:app --reload
+```
+
+- Swagger UI at `http://127.0.0.1:8000/docs`
+- `POST /predict/xt`: score one pass/carry (LightGBM, deep model, and game-state model if score/time given)
+- `GET /health`: simple status check
+- `GET /players/{tournament, progressive, xa, defensive, setpieces, pressing, pressresistance, aerials, dribbles}`
+- `POST /rank/csv`: upload a CSV with `start_x, start_y, end_x, end_y` (optional `player, team, is_carry, under_pressure, minutes_played`) and get a ranking; uploads are saved to `data/uploads/`
+- `GET /uploads`, `GET /uploads/{id}`
+
+Open `src/xt_leaderboard.html` in a browser while the API runs. CORS is wide open for local
+use; restrict `allow_origins` before any public deployment.
+
+## Figures
+
+- `figures/xt_surface_comparison.png`: learned pitch-value surface, both models side by side.
+- `figures/pass_value_map_3869685.png`: every completed pass of the 2022 Final colored by threat added.
+
+## Known limitations
+
+- **Small sample.** 64 matches means 1 to 7 games per player; rankings are noisy, especially per-90 for low-minute players.
+- **Weak label.** Every action in a possession that ends in a goal gets the same label, however far it was from the goal.
+- **Aerials** have a ~50% win rate by construction (each duel yields one winner and one loser row), so the model learns little beyond location.
+- **Red cards** are not modelled in minutes played.
+- **Pressing success** is a 5-second possession-regain heuristic, not a ground-truth label.
